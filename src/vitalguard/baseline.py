@@ -62,6 +62,9 @@ MAD_TO_SIGMA = 1.4826
 # gives a spread near zero and every later reading becomes a 40-sigma event.
 MIN_SPREAD_BPM = 1.5
 
+# Same floor logic for skin conductance, in raw ADC counts.
+MIN_GSR_SPREAD = 5.0
+
 
 @dataclass(slots=True)
 class Baseline:
@@ -69,6 +72,14 @@ class Baseline:
     spread: float | None
     coverage_s: float
     n_contributing: int
+    # Tonic skin conductance is learned per person for the same reason heart
+    # rate is: absolute EDA is meaningless across people. It depends on
+    # electrode placement, skin hydration, temperature and individual
+    # physiology, and varies by an order of magnitude between two healthy
+    # subjects. A fixed "GSR above X means stress" rule is the SAME mistake as
+    # a fixed "HR above 100 means concern" rule, one signal further along.
+    resting_gsr: float | None = None
+    gsr_spread: float | None = None
 
     @property
     def calibrated(self) -> bool:
@@ -99,6 +110,7 @@ class PersonalBaseline:
 
     def __init__(self, min_coverage_s: float = MIN_COVERAGE_S) -> None:
         self._hr: deque[float] = deque(maxlen=HISTORY)
+        self._gsr: deque[float] = deque(maxlen=HISTORY)
         self._covered_s: set[int] = set()
         self._min_coverage_s = min_coverage_s
 
@@ -125,6 +137,7 @@ class PersonalBaseline:
         if not self.qualifies(window, verdict, est):
             return False
         self._hr.append(float(est.hr_bpm))
+        self._gsr.append(float(np.median(window.cols["gsr_raw"])))
         # Unique whole-second buckets, so overlapping windows cannot inflate
         # coverage. This is the line that makes MIN_COVERAGE_S mean something.
         start_s, end_s = window.t_start_ms // 1000, window.t_end_ms // 1000
@@ -147,7 +160,23 @@ class PersonalBaseline:
         # cannot drag the learned spread.
         mad = float(np.median(np.abs(hr - centre)))
         spread = max(mad * MAD_TO_SIGMA, MIN_SPREAD_BPM)
-        return Baseline(centre, spread, self.coverage_s, len(self._hr))
+
+        gsr = np.fromiter(self._gsr, dtype=float)
+        g_centre = float(np.median(gsr))
+        g_mad = float(np.median(np.abs(gsr - g_centre)))
+        g_spread = max(g_mad * MAD_TO_SIGMA, MIN_GSR_SPREAD)
+
+        return Baseline(centre, spread, self.coverage_s, len(self._hr),
+                        resting_gsr=g_centre, gsr_spread=g_spread)
+
+    def gsr_deviation(self, window: Window) -> float | None:
+        """This window's tonic skin conductance, in units of the person's own
+        variability. None until calibrated."""
+        base = self.snapshot()
+        if base.resting_gsr is None:
+            return None
+        level = float(np.median(window.cols["gsr_raw"]))
+        return (level - base.resting_gsr) / base.gsr_spread
 
     def deviation(self, est: Estimate, verdict: Verdict) -> Deviation | None:
         """Compare a reading to this person's normal. None unless it is safe.

@@ -72,6 +72,44 @@ windows only, `WESAD_E4` profile.**
 **Gate false-confirm rate — synthetic adversarial windows, `SYNTHETIC` profile.**
 0 in 306, below 0.98% at 95% confidence (one-sided rule of three).
 
+### Severity scorer — WESAD, 5 subjects (S2–S6), 1,729 scored windows
+
+| true state | n | normal | exertion | arousal | unexplained | alarms |
+|---|---|---|---|---|---|---|
+| rest | 818 | 731 | 0 | 32 | 55 | 14 (1.7%) |
+| meditation | 529 | 480 | 0 | 30 | 19 | 4 (0.8%) |
+| amusement | 212 | 186 | 0 | 17 | 9 | 0 (0.0%) |
+| stress | 170 | 57 | 13 | 90 | 10 | 31 (18.2%) |
+
+**False alarms on non-stress states: 18 in 1,559 windows (1.15%).**
+**Stress recognised as elevated: 113/170 (66.5%)** — a third of stress windows are missed.
+
+#### Ablation: does the GSR sensor earn its place?
+
+| configuration | false alarms (quiet states) | stress alarms |
+|---|---|---|
+| HR + motion + GSR | 18 / 1559 = **1.15%** | 31 / 170 = 18.2% |
+| HR + motion only | 26 / 1559 = **1.67%** | 44 / 170 = 25.9% |
+
+Removing GSR multiplies false alarms by **1.4×**. That is real but modest — smaller
+than the ablation was expected to show, and it is reported as measured rather than
+framed up.
+
+The stronger case for the third sensor is attribution, not alarm count: **of the
+100 detected stress windows that were not exertion, 90 were correctly labelled
+AROUSAL rather than UNEXPLAINED.** Without GSR all 100 present as unexplained
+alarms. Reducing false alarms is what GSR does second; explaining *why* the heart
+rate rose is what it does first, and that is the actual product claim.
+
+#### ⚠ What this data cannot tell us
+
+- **The EXERTION branch is unvalidated on real data.** WESAD is a seated lab
+  study; motion is 0.004–0.022 g in every state. Only our own recordings can
+  test it.
+- **WESAD's amusement condition barely raises heart rate** (+0.03σ, same as
+  rest), so it does not meaningfully test arousal-without-stress at an
+  *elevated* rate. The scorer scores well on amusement for the wrong reason.
+
 ### ⚠ Known limitation: accuracy collapses under stress
 
 | state | MAE | median | n |
