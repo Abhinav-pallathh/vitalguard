@@ -97,7 +97,7 @@ def test_a_single_window_cannot_raise_a_full_alarm():
 
 def test_a_sustained_event_does_escalate():
     ss = SustainedScorer()
-    out = [ss.push(score(dev(9.0), 0.01, 0.1)) for _ in range(DEFAULT.sustain_windows)]
+    out = [ss.push(score(dev(9.0), 0.01, 0.1)) for _ in range(int(DEFAULT.sustain_s))]
     assert out[-1].severity is Severity.ALERT
     assert "confirming" not in out[-1].explanation
 

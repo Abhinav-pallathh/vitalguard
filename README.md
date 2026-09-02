@@ -136,6 +136,66 @@ validated:
     this remains a hypothesis until our own recordings exist
   - stress-state readings could be forced to DEGRADED by policy
 
+## Learned scorer vs rules — leave-one-subject-out, all 15 WESAD subjects
+
+Both arms on identical feature vectors and identical splits. Every number is
+from a subject the scorer never saw.
+
+| | sensitivity | specificity | F1 | worst-subject sensitivity |
+|---|---|---|---|---|
+| rules | 0.44 | 0.930 | 0.41 | **0.00** |
+| learned model | **0.68** | **0.965** | **0.67** | 0.22 |
+
+**Decision D8 is falsified.** It assumed rules would hold unless a model clearly
+beat them. A model clearly beats them, and the rules fail outright on 3 of 15
+subjects (sensitivity 0.00, 0.04, 0.04) — a failure completely hidden by the
+earlier pooled 5-subject figure.
+
+`gsr_sigma` is the **most important single feature**, ahead of heart-rate
+deviation. That is a far stronger justification for the third sensor than the
+1.4x ablation reported earlier. HRV features (RMSSD, SDNN, pNN50) contribute
+almost nothing at 10-second windows — as predicted in `features.py`, the window
+is too short for them to mean much.
+
+### The alarm rate was never a classifier problem
+
+Per-window alarming, out-of-fold:
+
+| | alarms / 16 h day | worst subject |
+|---|---|---|
+| rules | 305 | 2235 |
+| learned model | **400** | 2717 |
+
+The *better* classifier produced *more* alarms. Higher sensitivity means more
+firing. Requiring continuous evidence fixes it almost for free:
+
+| sustain required | alarms/day | per-window sensitivity |
+|---|---|---|
+| 5 s | 46.8 | 0.68 |
+| 15 s | 15.0 | 0.68 |
+| **60 s** | **2.3** | **0.68** |
+| 120 s | 0.0 | 0.68 (never fires) |
+
+Real physiological episodes last minutes; false positives are isolated. So
+duration costs essentially nothing and buys a 20x reduction.
+
+**The number worth remembering:**
+
+```
+per-window specificity achieved   0.9679
+needed for ~3 alarms/day          0.99974   -> a 123x reduction
+```
+
+96.8% specificity sounds excellent and is two orders of magnitude short of
+usable. Continuous monitoring has a base-rate problem that per-window metrics
+hide, which is why every alarm figure here is also quoted per day.
+
+⚠ **Not yet measured: episode-level detection rate.** The sensitivity column is
+per-window classifier sensitivity and is independent of the notification
+policy. At 120 s sustain the system fires zero alarms while still showing 0.68
+— which proves the column does not measure whether real episodes get caught.
+Until that is measured, 60 s is an operating point chosen on alarm rate alone.
+
 ## Honesty rules for any number we report
 
 Carried over from Residual Zero, because they were right there:

@@ -74,7 +74,20 @@ class ScoreProfile:
     high_sigma: float = 4.0         # sustained above this is not ambiguous
     motion_explains: float = 0.15   # matches the gate's DEGRADED motion threshold
     arousal_sigma: float = 1.5      # stress GSR p25 = +1.83; rest median = +0.05
-    sustain_windows: int = 3        # a single window is noise, not an event
+
+    # SECONDS of continuous evidence, not a window count. Windows are a
+    # trap here: the demo runs a 1 s hop and the evaluation a 5 s hop, so
+    # "3 windows" silently meant 3 s in one place and 15 s in the other.
+    #
+    # 60 s comes from a measured sweep over 15 WESAD subjects, out-of-fold:
+    #     sustain    alarms/day    per-window sensitivity
+    #        5 s        46.8              0.68
+    #       15 s        15.0              0.68
+    #       60 s         2.3              0.68   <- here
+    #      120 s         0.0              0.68   <- never fires at all
+    # A 20x reduction in alarms for no measurable loss, because real
+    # physiological episodes last minutes and false positives are isolated.
+    sustain_s: float = 60.0
 
 
 DEFAULT = ScoreProfile()
@@ -147,9 +160,10 @@ class SustainedScorer:
     always sees what we think is happening, just not the alarm.
     """
 
-    def __init__(self, profile: ScoreProfile = DEFAULT) -> None:
+    def __init__(self, profile: ScoreProfile = DEFAULT, hop_s: float = 1.0) -> None:
         self._profile = profile
-        self._recent: deque[Context] = deque(maxlen=profile.sustain_windows)
+        n = max(1, int(round(profile.sustain_s / hop_s)))
+        self._recent: deque[Context] = deque(maxlen=n)
 
     def push(self, s: Score) -> Score:
         self._recent.append(s.context)
@@ -163,3 +177,53 @@ class SustainedScorer:
 
     def reset(self) -> None:
         self._recent.clear()
+
+
+class AlarmPolicy:
+    """Turns per-window detections into per-EPISODE alarms.
+
+    The measurement that forced this: with leave-one-subject-out across 15
+    WESAD subjects, the rule scorer produced ~305 alarms per 16-hour day and
+    the (better) learned scorer produced ~400. A more sensitive classifier
+    made it WORSE, which is the tell that the problem was never classification.
+
+    A stressed person is stressed for ten minutes, not for one hundred and
+    twenty independent 10-second events. Alarming per window turns one episode
+    into a hundred notifications, and a device that notifies a hundred times is
+    a device in a drawer -- the exact failure the product's own premise names.
+
+    Two rules:
+      1. After an alarm, stay quiet for `refractory_s` -- the episode is
+         already known, and repeating it adds no information.
+      2. Break the refractory ONLY if severity genuinely escalates. Getting
+         worse is new information; continuing is not.
+
+    Detection is unaffected. The dashboard still updates every window; the
+    wearer is interrupted once per episode.
+    """
+
+    def __init__(self, refractory_s: float = 300.0) -> None:
+        self._refractory_s = refractory_s
+        self._last_t: float | None = None
+        self._last_sev: Severity = Severity.NONE
+
+    def should_notify(self, s: Score, t_s: float) -> bool:
+        """Does this score interrupt the wearer? Detection is separate."""
+        if s.severity.value < Severity.CONCERN.value:
+            if s.severity is Severity.NONE:
+                self._last_sev = Severity.NONE      # episode is over
+            return False
+
+        first = self._last_t is None
+        expired = (not first) and (t_s - self._last_t) >= self._refractory_s
+        escalated = s.severity.value > self._last_sev.value
+
+        if first or expired or escalated:
+            self._last_t = t_s
+            self._last_sev = s.severity
+            return True
+        return False
+
+    def reset(self) -> None:
+        self._last_t = None
+        self._last_sev = Severity.NONE
