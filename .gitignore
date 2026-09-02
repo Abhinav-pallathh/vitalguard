@@ -1,0 +1,13 @@
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Generated data is NOT committed. synth.py is deterministic per seed, so the
+# generator plus the seed IS the dataset -- 4.6 MB of reproducible CSV in git
+# would be pure waste. Regenerate with:  python make_data.py
+data/*.csv
+
+# Real device recordings are kept out of git by default until we have decided
+# what is safe to publish. These are physiological recordings of real people.
+data/recordings/
