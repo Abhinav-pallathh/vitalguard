@@ -1,4 +1,12 @@
-# Firmware contract — for Sujan
+# Firmware contract
+
+**Scope change 2026-09-02: Sujan builds the perfboard only. All software,
+firmware included, is ours.** This was written as a handoff document; it is now
+our own build spec. The content did not need to change — a contract you write
+for someone else is exactly the contract you should hold yourself to.
+
+Toolchain: **PlatformIO** (`platformio.ini` lives in the repo, so the library
+versions are pinned and the build is reproducible for both of us).
 
 **The firmware is a dumb recorder.** It reads sensors and emits rows. It computes
 no heart rate, does no filtering, does no smoothing, and makes no decisions.
@@ -96,6 +104,14 @@ corrupts every frequency-domain measurement we make downstream.
 
 ## First deliverable
 
-60 seconds of `rest`, sitting still, ear clip on, electrodes attached, written to
-SD as `data/rest_<date>.csv`. Send me the file. Everything else unblocks from
-there — I can already replay it, because the harness is written and tested.
+60 seconds of `rest`, sitting still, ear clip on, electrodes attached.
+
+**Do this on the breadboard. Do not wait for the perfboard.** The breadboard rig
+already reads all three sensors; the perfboard is a form-factor upgrade, not a
+prerequisite. Everything downstream — the baseline model, the scorer, and every
+threshold in `gate.py` — is provisional until a real recording exists, so the
+recording is the single highest-value thing on the board right now.
+
+Serial-first is fine for the first capture (`pio device monitor` piped to a
+file). SD logging can come after; it is needed for the untethered demo, not for
+the first dataset.
