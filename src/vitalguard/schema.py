@@ -35,7 +35,17 @@ SAMPLE_RATE_HZ = 100
 
 # Label vocabulary. `unknown` is the default and is NOT a training class -- it
 # means nobody pressed the button, not that the subject was at rest.
-LABELS = ("unknown", "rest", "exercise", "stress")
+#
+# `amusement` and `meditation` were added 2026-09-02 when WESAD was brought in.
+# Amusement in particular is the most valuable label in that dataset and the
+# one it would be easiest to throw away: it is AROUSAL WITHOUT STRESS. Any
+# scorer that separates stress from rest but calls amusement stress has learned
+# "heart rate went up", not "something is wrong". Flattening it into `unknown`
+# would have hidden exactly the failure worth catching.
+#
+# `exercise` has no counterpart in WESAD -- that half of the discrimination can
+# only come from our own recordings.
+LABELS = ("unknown", "rest", "exercise", "stress", "amusement", "meditation")
 
 
 @dataclass(slots=True)

@@ -53,15 +53,32 @@ def bandpass(x: np.ndarray, lo: float, hi: float, order: int = 3) -> np.ndarray:
 
 
 def ssqi(ppg_raw: np.ndarray) -> float:
-    """Skewness signal quality index. Higher is cleaner.
+    """Skewness signal quality index, POLARITY-NORMALISED. Higher is cleaner.
 
-    Computed on the bandpassed signal so the large DC pedestal and respiratory
-    wander do not dominate the third moment.
+    Computed on the bandpassed signal so the DC pedestal and respiratory wander
+    do not dominate the third moment.
+
+    ⚠ Returns the ABSOLUTE skewness, and that is not a detail.
+
+    Skewness measures how asymmetric the pulse is -- sharp systolic upstroke,
+    slow diastolic decay -- and a clean PPG is strongly asymmetric while noise
+    is roughly symmetric. But the SIGN of that asymmetry depends on which way
+    the sensor's systolic excursion points, which is a property of the SENSOR,
+    not of the person. Raw MAX30102 IR counts DIP at systole (more blood, more
+    absorption); the Empatica E4's BVP is already oriented the other way.
+
+    Caught on 2026-09-02 by running the gate over WESAD: synthetic clean data
+    scored +1.39, real clean data scored -0.36, and the gate rejected 93% of
+    real human recordings. With a signed index, shipping a threshold fitted on
+    one polarity and then wiring up hardware with the other rejects everything,
+    with no error and no clue why.
+
+    Asymmetry is the physiological signal. Its direction is wiring.
     """
     ac = bandpass(ppg_raw, *PPG_BAND)
     if ac.std() < 1e-9:
         return 0.0
-    return float(stats.skew(ac))
+    return float(abs(stats.skew(ac)))
 
 
 def perfusion_index(ppg_raw: np.ndarray) -> float:

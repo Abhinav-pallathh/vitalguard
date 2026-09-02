@@ -31,17 +31,64 @@ from enum import Enum
 from . import quality
 from .replay import Window
 
-# --- provisional thresholds, fit on synthetic data 2026-09-02 -------------
-# Measured separations that justify each number:
-#   perfusion  loose 0.08-0.11  |  everything else >= 1.08   -> gap at 0.5
-#   ssqi       corrupted median 0.10, min -0.61              -> floor at 0.25
-#   ssqi       exercise 0.37-0.67 vs clean states >= 0.75    -> degrade at 0.70
-#   motion     exercise 0.46, corrupted 0.37-0.41 vs <= 0.05 -> degrade at 0.15
-PERFUSION_MIN = 0.5      # below this the sensor is not optically coupled
-SSQI_UNSCORED = 0.25     # below this the pulse shape is destroyed
-SSQI_DEGRADED = 0.70     # below this the shape is compromised but readable
-MOTION_DEGRADED = 0.15   # g, std of |accel|; above this motion corrupts PPG
-RAIL_MAX = 0.02          # fraction of samples allowed at an ADC rail
+# --- threshold profiles ---------------------------------------------------
+#
+# Thresholds are a property of the SENSOR, not of the algorithm. Decision D7
+# said so; running the gate over WESAD on 2026-09-02 proved it -- constants fit
+# on synthetic data rejected 93% of real human recordings. So they live in a
+# named profile rather than as module globals, and every reported number has to
+# say which profile produced it.
+
+@dataclass(frozen=True, slots=True)
+class GateProfile:
+    """One sensor's quality thresholds.
+
+    `perfusion_min = None` means the perfusion check is UNAVAILABLE for this
+    source and is skipped -- not that it passes. Used for datasets whose
+    hardware never exposed a raw DC pedestal, where any AC/DC figure we could
+    compute would be measuring a constant we invented.
+    """
+
+    name: str
+    ssqi_unscored: float
+    ssqi_degraded: float
+    perfusion_min: float | None
+    motion_degraded: float
+    rail_max: float = 0.02
+
+
+SYNTHETIC = GateProfile(
+    name="synthetic",
+    # measured on synth.py 2026-09-02:
+    #   |SSQI|     clean >= 0.75, corrupted median 0.10
+    #   perfusion  loose 0.08-0.11 vs >= 1.08 everywhere else
+    #   motion     exercise 0.46, corrupted ~0.39, quiet states <= 0.05
+    ssqi_unscored=0.25,
+    ssqi_degraded=0.70,
+    perfusion_min=0.5,
+    motion_degraded=0.15,
+)
+
+WESAD_E4 = GateProfile(
+    name="wesad-e4",
+    # measured on WESAD S2 2026-09-02. Real wrist PPG is markedly less peaked
+    # than the synthetic generator's two-gaussian beat, so the same signal
+    # quality yields a much lower |skew|. Re-fit, not reused.
+    ssqi_unscored=0.12,
+    ssqi_degraded=0.30,
+    # UNAVAILABLE, not lenient: the Empatica E4 exposes no raw DC pedestal, so
+    # the converter has to invent one and any perfusion number computed from it
+    # is evidence about nothing. See wesad.INVENTED_PPG_DC.
+    perfusion_min=None,
+    motion_degraded=0.15,
+)
+
+# The profile that will actually ship. Deliberately absent until real ear-clip
+# recordings exist -- there is no honest way to guess it, and a placeholder
+# would get quoted.
+EARCLIP_MAX30102 = None
+
+DEFAULT_PROFILE = SYNTHETIC
 
 
 class Trust(Enum):
@@ -63,6 +110,7 @@ class Verdict:
     ecg: Trust
     reasons: list[str] = field(default_factory=list)
     metrics: dict[str, float] = field(default_factory=dict)
+    profile: str = "unknown"   # which thresholds produced this verdict
 
     @property
     def scored(self) -> bool:
@@ -74,7 +122,7 @@ class Verdict:
         return f"ppg={self.ppg.value} ecg={self.ecg.value}{why}"
 
 
-def assess(window: Window) -> Verdict:
+def assess(window: Window, profile: GateProfile = DEFAULT_PROFILE) -> Verdict:
     """Judge one window. Deterministic, no model, no state, no randomness."""
     ppg_raw = window.cols["ppg_ir"]
     ecg_raw = window.cols["ecg_raw"]
@@ -93,15 +141,15 @@ def assess(window: Window) -> Verdict:
     ppg = Trust.TRUSTED
     if quality.flatline(ppg_raw):
         ppg, _ = Trust.UNSCORED, reasons.append("PPG flatline - sensor disconnected")
-    elif m["ppg_rail"] > RAIL_MAX:
+    elif m["ppg_rail"] > profile.rail_max:
         ppg, _ = Trust.UNSCORED, reasons.append("PPG saturated at ADC rail")
-    elif m["perfusion"] < PERFUSION_MIN:
+    elif profile.perfusion_min is not None and m["perfusion"] < profile.perfusion_min:
         ppg, _ = Trust.UNSCORED, reasons.append("clip not making contact - reseat it")
-    elif m["ssqi"] < SSQI_UNSCORED:
+    elif m["ssqi"] < profile.ssqi_unscored:
         ppg, _ = Trust.UNSCORED, reasons.append("pulse waveform destroyed by artifact")
-    elif m["ssqi"] < SSQI_DEGRADED or m["motion"] > MOTION_DEGRADED:
+    elif m["ssqi"] < profile.ssqi_degraded or m["motion"] > profile.motion_degraded:
         ppg = Trust.DEGRADED
-        if m["motion"] > MOTION_DEGRADED:
+        if m["motion"] > profile.motion_degraded:
             reasons.append("reading taken during motion")
         else:
             reasons.append("pulse waveform partially degraded")
@@ -114,7 +162,7 @@ def assess(window: Window) -> Verdict:
         ecg, _ = Trust.UNSCORED, reasons.append("ECG electrode detached")
     elif quality.flatline(ecg_raw):
         ecg, _ = Trust.UNSCORED, reasons.append("ECG flatline")
-    elif m["ecg_rail"] > RAIL_MAX:
+    elif m["ecg_rail"] > profile.rail_max:
         ecg, _ = Trust.UNSCORED, reasons.append("ECG saturated at ADC rail")
 
-    return Verdict(ppg=ppg, ecg=ecg, reasons=reasons, metrics=m)
+    return Verdict(ppg=ppg, ecg=ecg, reasons=reasons, metrics=m, profile=profile.name)
