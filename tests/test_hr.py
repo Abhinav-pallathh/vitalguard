@@ -40,11 +40,29 @@ def test_gating_is_what_makes_the_heart_rate_accurate():
 
 
 @pytest.mark.parametrize("scenario", CLEAN)
-def test_accurate_within_two_bpm_on_clean_signal(scenario):
+def test_tracks_the_mean_rate_on_clean_signal(scenario):
+    """REWRITTEN 2026-09-02. It used to assert MAE < 2.0 bpm against
+    `synth.true_hr`, and that assertion was wrong the moment the generator
+    gained realistic slow HR drift (HR_DRIFT_BPM = 3.0).
+
+    Why it was wrong: `true_hr` is the NOMINAL MEAN rate, not the instantaneous
+    rate. With +/-3 bpm of drift, an estimator that perfectly tracks the true
+    instantaneous rate must show ~2 bpm mean error against the nominal centre.
+    The old test would have rewarded an estimator that ignored real changes in
+    heart rate -- the opposite of what we want.
+
+    What is actually claimed now: across a recording the drift averages out, so
+    the MEDIAN estimate should land on the nominal mean; and the per-window
+    error should stay bounded by the drift amplitude plus a small margin.
+    """
     truth = synth.true_hr(scenario)
-    errs = [abs(e.hr_bpm - truth) for _, e in estimates(scenario) if e.hr_bpm is not None]
-    assert errs, f"{scenario}: no usable estimate at all"
-    assert np.mean(errs) < 2.0, f"{scenario}: MAE {np.mean(errs):.2f} bpm"
+    vals = np.array([e.hr_bpm for _, e in estimates(scenario) if e.hr_bpm is not None])
+    assert vals.size, f"{scenario}: no usable estimate at all"
+
+    assert abs(np.median(vals) - truth) < 2.0, (
+        f"{scenario}: median {np.median(vals):.2f} vs nominal {truth}")
+    assert np.mean(np.abs(vals - truth)) < synth.HR_DRIFT_BPM + 1.0, (
+        f"{scenario}: MAE {np.mean(np.abs(vals - truth)):.2f} bpm exceeds drift bound")
 
 
 @pytest.mark.parametrize("scenario", CLEAN)

@@ -54,16 +54,30 @@ _PROFILE = {
 }
 
 
-def _beat_times(hr_bpm: float, dur_s: float, rng: np.random.Generator) -> np.ndarray:
-    """Beat instants with realistic RR jitter.
+# Slow autonomic/respiratory drift of the mean rate, in bpm. Real resting heart
+# rate is NOT a constant with jitter -- it wanders by several bpm over a minute.
+# Added 2026-09-02 after the baseline model learned a spread of ~0 on the old
+# generator and every later reading came out as a 40-sigma event. A generator
+# that understates variability makes the personalisation look better than it is.
+HR_DRIFT_BPM = 3.0
 
-    Without jitter every beat lands on the same phase and peak detectors score
-    perfectly for the wrong reason. ~4% RR variability is normal-ish at rest.
+
+def _beat_times(hr_bpm: float, dur_s: float, rng: np.random.Generator) -> np.ndarray:
+    """Beat instants with realistic RR jitter AND slow drift of the mean rate.
+
+    Two separate effects, and they are not interchangeable:
+      - fast jitter (~4% RR) stops peak detectors scoring perfectly for the
+        wrong reason, because every beat would otherwise land on one phase
+      - slow drift is what a personal baseline's SPREAD is actually measuring;
+        without it the learned spread is zero and personalisation is a no-op
     """
-    rr = 60.0 / hr_bpm
-    times, t = [], rr
+    phase = rng.uniform(0, 2 * np.pi)
+    period = rng.uniform(18.0, 32.0)          # seconds per drift cycle
+    times, t = [], 60.0 / hr_bpm
     while t < dur_s:
         times.append(t)
+        drift = HR_DRIFT_BPM * np.sin(2 * np.pi * t / period + phase)
+        rr = 60.0 / (hr_bpm + drift)
         t += rr * (1.0 + rng.normal(0.0, 0.04))
     return np.array(times)
 
