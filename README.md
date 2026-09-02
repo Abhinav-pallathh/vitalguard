@@ -55,6 +55,49 @@ GSR is decoration and we should say so out loud.
 | 4 | Both | On-device inference → OLED + buzzer | |
 | 5 | Both | Dashboard + demo script | |
 
+## Measured results
+
+**PPG heart rate vs chest-ECG ground truth — WESAD, 7 subjects (S2–S8), gate-passing
+windows only, `WESAD_E4` profile.**
+
+| | |
+|---|---|
+| MAE | **3.22 bpm** |
+| Median error | **1.60 bpm** |
+| Within 5 bpm | 84.4% |
+| Within 10 bpm | 94.0% |
+| Worst single subject | 4.65 bpm |
+| n | 2,517 windows |
+
+**Gate false-confirm rate — synthetic adversarial windows, `SYNTHETIC` profile.**
+0 in 306, below 0.98% at 95% confidence (one-sided rule of three).
+
+### ⚠ Known limitation: accuracy collapses under stress
+
+| state | MAE | median | n |
+|---|---|---|---|
+| rest | 2.25 | 1.24 | 1163 |
+| amusement | 2.47 | 1.40 | 342 |
+| meditation | 2.98 | 1.92 | 783 |
+| **stress** | **10.01** | **5.86** | 229 |
+
+Stress is **4× worse than every other state, on windows that PASSED the gate.**
+Peripheral vasoconstriction shunts blood from the extremities, so wrist PPG
+degrades exactly when the reading matters most — and our quality gate does not
+currently detect that degradation. The estimator-agreement check catches part of
+it (agreement falls to 29% under stress) but the windows that survive are still
+four times less accurate.
+
+This is stated rather than hidden because it is the single most important
+weakness in the system: the product exists to catch physiological events, and
+its measurement is least reliable during one. Two mitigations, neither yet
+validated:
+
+  - the **ear clip** is far better perfused than the wrist, which is the
+    placement already chosen for the hardware — but WESAD is wrist data, so
+    this remains a hypothesis until our own recordings exist
+  - stress-state readings could be forced to DEGRADED by policy
+
 ## Honesty rules for any number we report
 
 Carried over from Residual Zero, because they were right there:
