@@ -1,0 +1,319 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>VitalGuard — The Gate</title>
+<style>
+  :root{
+    --board:#1f3b30; --chalk:#eef3ec; --chalk-dim:#8fa89b;
+    --wood:#6b4a2f; --wall:#171a19; --warn:#e8b04b; --bad:#d9604a; --good:#7fc98f;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{
+    background:var(--wall); color:var(--chalk);
+    font:16px/1.5 ui-rounded,"Segoe UI",system-ui,sans-serif;
+    display:grid; place-items:center; overflow:hidden;
+  }
+  /* --- the room ------------------------------------------------------- */
+  #room{
+    position:relative; width:min(96vw,1000px); height:min(88vh,660px);
+    background:
+      radial-gradient(120% 90% at 50% 0%, #23282a 0%, #121514 70%);
+    border-radius:14px; overflow:hidden;
+    transition:transform .55s cubic-bezier(.7,0,.3,1), opacity .35s;
+  }
+  #room.leaving{ transform:translateX(-14%) scale(.97); opacity:0 }
+  #room.entering{ transform:translateX(14%) scale(.97); opacity:0 }
+  .floor{position:absolute;inset:auto 0 0 0;height:26%;
+    background:linear-gradient(#2a2320,#1b1614); border-top:2px solid #3a2f28}
+  /* --- blackboard ----------------------------------------------------- */
+  #board{
+    position:absolute; left:6%; top:9%; width:62%; height:56%;
+    background:var(--board); border:12px solid var(--wood); border-radius:6px;
+    box-shadow:0 18px 40px #0009, inset 0 0 90px #0b1a15;
+    padding:22px 26px; display:flex; flex-direction:column; gap:12px;
+  }
+  #board::after{content:"";position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(60% 40% at 30% 20%,#ffffff0a,transparent 70%)}
+  #qnum{font-size:13px;letter-spacing:.18em;text-transform:uppercase;color:var(--chalk-dim)}
+  #qtext{font-size:clamp(18px,2.4vw,28px); font-weight:600; text-wrap:balance}
+  #qimg{max-height:38%; align-self:center; filter:invert(1) opacity(.85); display:none}
+  #answer{
+    margin-top:auto; width:100%; background:#0000; border:0; border-bottom:2px dashed var(--chalk-dim);
+    color:var(--chalk); font:inherit; font-size:22px; padding:6px 2px; outline:none;
+  }
+  #answer::placeholder{color:#ffffff33}
+  /* --- timer: chalk bar ----------------------------------------------- */
+  #timerwrap{position:absolute; right:6%; top:9%; width:22%;}
+  #clock{font-size:44px;font-variant-numeric:tabular-nums;text-align:center}
+  #bar{height:10px;background:#ffffff1a;border-radius:99px;overflow:hidden;margin-top:8px}
+  #barfill{height:100%;width:100%;background:var(--good);transition:width .2s linear}
+  #score{margin-top:18px;text-align:center;color:var(--chalk-dim);font-size:14px}
+  #score b{color:var(--chalk);font-size:26px;display:block}
+  /* --- character + door ------------------------------------------------ */
+  #guy{position:absolute; bottom:16%; left:12%; width:54px; transition:left 1.5s ease-in-out}
+  #guy.walking .leg{animation:step .38s infinite alternate}
+  #guy.walking .leg2{animation-delay:.19s}
+  @keyframes step{from{transform:rotate(-16deg)}to{transform:rotate(16deg)}}
+  #door{position:absolute; bottom:16%; right:7%; width:96px; height:170px;
+    background:linear-gradient(#4b3423,#332215); border:3px solid #7a5638;
+    border-radius:6px 6px 0 0; box-shadow:inset 0 0 30px #0008;
+    transition:opacity .5s, transform .6s; transform-origin:left center}
+  #door.open{transform:perspective(600px) rotateY(-72deg); opacity:.35}
+  #door .knob{position:absolute;right:12px;top:50%;width:10px;height:10px;border-radius:50%;background:var(--warn)}
+  /* --- overlays -------------------------------------------------------- */
+  .overlay{position:absolute;inset:0;background:#0b0e0dee;display:grid;place-items:center;
+    text-align:center;padding:40px;gap:14px;grid-auto-flow:row;align-content:center}
+  .overlay h1{margin:0;font-size:clamp(22px,3.4vw,38px)}
+  .overlay p{margin:0;max-width:52ch;color:var(--chalk-dim)}
+  .hidden{display:none!important}
+  kbd{background:#ffffff1a;border-radius:4px;padding:2px 7px;font:inherit;font-size:14px}
+  #gatebar{width:min(420px,70vw);height:26px;background:#ffffff14;border-radius:99px;overflow:hidden;
+    border:1px solid #ffffff22}
+  #gatefill{height:100%;width:100%;background:linear-gradient(90deg,var(--good),var(--warn),var(--bad));
+    transition:width .3s ease}
+  #gatenote{font-size:14px;color:var(--chalk-dim)}
+  #flash{position:absolute;inset:0;pointer-events:none;background:var(--bad);opacity:0;transition:opacity .18s}
+  #flash.hit{opacity:.22}
+</style>
+
+<div id="room">
+  <div class="floor"></div>
+
+  <div id="board">
+    <div id="qnum">Room 1 · Practice</div>
+    <div id="qtext">—</div>
+    <img id="qimg" alt="">
+    <input id="answer" autocomplete="off" spellcheck="false" placeholder="type your answer, then Enter">
+  </div>
+
+  <div id="timerwrap">
+    <div id="clock">--</div>
+    <div id="bar"><div id="barfill"></div></div>
+    <div id="score">score<b id="scoreval">0</b></div>
+  </div>
+
+  <svg id="guy" viewBox="0 0 40 80" fill="none" stroke="#eef3ec" stroke-width="3.4" stroke-linecap="round">
+    <circle cx="20" cy="11" r="8" fill="#eef3ec" stroke="none"/>
+    <line x1="20" y1="19" x2="20" y2="46"/>
+    <line x1="20" y1="26" x2="7"  y2="38"/>
+    <line x1="20" y1="26" x2="33" y2="38"/>
+    <line class="leg"  x1="20" y1="46" x2="11" y2="72" style="transform-origin:20px 46px"/>
+    <line class="leg2 leg" x1="20" y1="46" x2="29" y2="72" style="transform-origin:20px 46px"/>
+  </svg>
+
+  <div id="door"><div class="knob"></div></div>
+  <div id="flash"></div>
+
+  <!-- gate between rooms -->
+  <div id="gate" class="overlay hidden">
+    <h1>The door is locked.</h1>
+    <p id="gatetext">It opens when you settle. Breathe out slowly — longer than you breathe in.</p>
+    <div id="gatebar"><div id="gatefill"></div></div>
+    <div id="gatenote">arousal, in units of your own baseline</div>
+    <p style="font-size:13px">stand-in for the real sensor: hold <kbd>Space</kbd> to calm down</p>
+  </div>
+
+  <!-- start / end -->
+  <div id="intro" class="overlay">
+    <h1>The Gate</h1>
+    <p>Four rooms. The blackboard asks, the clock runs, and the door between rooms
+       only opens when your body settles. First room is practice — untimed, unscored.
+       That round is how the machine learns your normal.</p>
+    <p><kbd>Enter</kbd> to begin</p>
+  </div>
+
+  <div id="done" class="overlay hidden">
+    <h1>Out.</h1>
+    <p id="donetext"></p>
+    <p style="font-size:13px"><kbd>E</kbd> download the behaviour log · <kbd>R</kbd> again</p>
+  </div>
+</div>
+
+<script>
+// ---------------------------------------------------------------------------
+// Rooms are DATA. Adding a level is a line here, never new code.
+// `gate` is the door threshold for the room that FOLLOWS: lower = must be calmer.
+// ---------------------------------------------------------------------------
+const ROOMS = [
+  { practice:true, seconds:null, gate:null, questions:[
+      {q:"What is 7 + 8?", a:"15"},
+      {q:"Which is heavier: 1kg of iron or 1kg of feathers?", a:"same", accept:["equal","neither","same weight"]},
+      {q:"How many sides does a hexagon have?", a:"6", accept:["six"]},
+      {q:"What comes next: 2, 4, 6, __ ?", a:"8", accept:["eight"]},
+  ]},
+  { seconds:20, gate:1.8, questions:[
+      {q:"A train leaves at 14:45 and arrives at 17:20. How many minutes is the journey?", a:"155"},
+      {q:"What is 15% of 240?", a:"36"},
+      {q:"Next in sequence: 3, 6, 11, 18, __ ?", a:"27"},
+  ]},
+  { seconds:14, gate:1.2, questions:[
+      {q:"A shirt costs ₹800 after a 20% discount. What was the original price?", a:"1000"},
+      {q:"If 5 machines make 5 widgets in 5 minutes, how long for 100 machines to make 100 widgets?", a:"5", accept:["5 minutes","five"]},
+      {q:"What is 17 × 23?", a:"391"},
+  ]},
+  { seconds:9,  gate:0.8, questions:[
+      {q:"Next: 1, 1, 2, 3, 5, 8, __ ?", a:"13"},
+      {q:"A clock shows 3:15. What is the angle between the hands, in degrees?", a:"7.5", accept:["7.5 degrees"]},
+      {q:"What is 144 ÷ 0.25?", a:"576"},
+  ]},
+];
+
+// --- behaviour event log ---------------------------------------------------
+// Vocabulary MUST match src/vitalguard/behaviour.py exactly. If these strings
+// drift, summarise() silently sees an empty block and reports nothing.
+const EV = { SHOWN:"question_shown", KEY:"keydown", BACK:"backspace",
+             COMMIT:"answer_committed", CHANGE:"answer_changed",
+             BLUR:"focus_lost", FOCUS:"focus_regained" };
+const log = [];
+const T0 = performance.now();
+// NOTE: this clock is the browser's, not the device's millis(). Before the two
+// channels can share a timeline, the test must stamp one sync marker against a
+// device row. Until then behaviour is self-consistent but not alignable.
+const now = () => Math.round(performance.now() - T0);
+function emit(event, detail=""){ log.push({t_ms:now(), event, channel:"input", detail}); }
+
+// --- state -----------------------------------------------------------------
+let ri=0, qi=0, score=0, tick=null, remaining=0, committedOnce=new Set();
+const $ = s => document.querySelector(s);
+const room=$("#room"), guy=$("#guy"), door=$("#door"), ans=$("#answer");
+
+// Only keys typed INTO the answer field become behaviour events. Global
+// keypresses (Enter to advance, Space at the gate) must never land in the
+// typing-rhythm stream -- they would be summarised as the player's typing.
+ans.addEventListener("keydown", e => {
+  if (e.key === "Backspace") emit(EV.BACK);
+  else if (e.key.length === 1) emit(EV.KEY);
+});
+addEventListener("blur", () => emit(EV.BLUR));
+addEventListener("focus", () => emit(EV.FOCUS));
+
+function norm(s){ return String(s).trim().toLowerCase().replace(/\s+/g," "); }
+function correct(qo, given){
+  const ok = [qo.a, ...(qo.accept||[])].map(norm);
+  return ok.includes(norm(given));
+}
+
+function showQuestion(){
+  const R = ROOMS[ri], Q = R.questions[qi];
+  $("#qnum").textContent = R.practice
+    ? `Room 1 · Practice · ${qi+1}/${R.questions.length}`
+    : `Room ${ri+1} · ${qi+1}/${R.questions.length}`;
+  $("#qtext").textContent = Q.q;
+  const img=$("#qimg");
+  if (Q.img){ img.src=Q.img; img.style.display="block"; } else img.style.display="none";
+  ans.value=""; ans.focus();
+  emit(EV.SHOWN, `r${ri}q${qi}`);
+  if (R.seconds) startClock(R.seconds); else stopClock();
+}
+
+function startClock(sec){
+  stopClock(); remaining = sec*1000;
+  $("#clock").textContent = sec.toFixed(0);
+  tick = setInterval(() => {
+    remaining -= 100;
+    const frac = Math.max(0, remaining) / (sec*1000);
+    $("#barfill").style.width = (frac*100)+"%";
+    $("#barfill").style.background = frac>.5 ? "var(--good)" : frac>.25 ? "var(--warn)" : "var(--bad)";
+    $("#clock").textContent = Math.max(0, remaining/1000).toFixed(1);
+    if (remaining <= 0){ stopClock(); judge(null); }
+  }, 100);
+}
+function stopClock(){ if(tick) clearInterval(tick); tick=null;
+  $("#clock").textContent="--"; $("#barfill").style.width="100%"; }
+
+function judge(given){
+  const R = ROOMS[ri], Q = R.questions[qi];
+  stopClock();
+  if (given !== null) emit(EV.COMMIT, `r${ri}q${qi}`);
+  const ok = given !== null && correct(Q, given);
+  if (!R.practice){
+    // Loss aversion: a falling score generates more arousal than a rising one.
+    score += ok ? 100 : -60;
+    $("#scoreval").textContent = score;
+    if (!ok){ $("#flash").classList.add("hit"); setTimeout(()=>$("#flash").classList.remove("hit"),180); }
+  }
+  qi++;
+  if (qi < R.questions.length) showQuestion(); else endRoom();
+}
+
+ans.addEventListener("keydown", e => {
+  if (e.key !== "Enter") return;
+  const key = `${ri}:${qi}`;
+  if (committedOnce.has(key)) emit(EV.CHANGE, key);
+  committedOnce.add(key);
+  judge(ans.value);
+});
+
+// --- the door = the calm gate ---------------------------------------------
+// Real version reads personal_sigma from the physiology pipeline. Stand-in:
+// holding Space lets arousal fall, so the loop can be felt before wiring it.
+let arousal = 3.0, gateTimer=null, gateDeadline=0, holding=false;
+addEventListener("keydown", e => { if(e.code==="Space"){ holding=true; e.preventDefault(); }});
+addEventListener("keyup",   e => { if(e.code==="Space") holding=false; });
+
+function runGate(threshold, done){
+  $("#gate").classList.remove("hidden");
+  arousal = 2.6 + Math.random()*0.8;
+  gateDeadline = performance.now() + 45000;   // never trap anyone. 45s, then open.
+  gateTimer = setInterval(() => {
+    arousal += holding ? -0.055 : 0.022 + Math.random()*0.01;
+    arousal = Math.max(0, arousal);
+    $("#gatefill").style.width = Math.min(100, (arousal/3.5)*100) + "%";
+    const timedOut = performance.now() > gateDeadline;
+    if (arousal <= threshold || timedOut){
+      clearInterval(gateTimer);
+      $("#gatetext").textContent = timedOut
+        ? "Door opened on time, not on you. That's data too."
+        : "You settled. The door gives.";
+      setTimeout(() => { $("#gate").classList.add("hidden"); done(); }, 1100);
+    }
+  }, 100);
+}
+
+function walkThroughDoor(after){
+  guy.classList.add("walking");
+  guy.style.left = "calc(93% - 54px)";
+  setTimeout(() => { door.classList.add("open"); }, 1200);
+  setTimeout(() => {
+    guy.classList.remove("walking");
+    room.classList.add("leaving");
+    setTimeout(() => {
+      guy.style.transition="none"; guy.style.left="12%"; door.classList.remove("open");
+      room.classList.remove("leaving"); room.classList.add("entering");
+      requestAnimationFrame(()=>requestAnimationFrame(()=>{
+        guy.style.transition=""; room.classList.remove("entering"); after();
+      }));
+    }, 600);
+  }, 1900);
+}
+
+function endRoom(){
+  const nextIdx = ri+1;
+  if (nextIdx >= ROOMS.length){ return finish(); }
+  const threshold = ROOMS[nextIdx].gate;
+  const go = () => walkThroughDoor(() => { ri=nextIdx; qi=0; showQuestion(); });
+  if (threshold == null) go(); else runGate(threshold, go);
+}
+
+function finish(){
+  stopClock();
+  $("#donetext").textContent =
+    `Final score ${score}. ${log.filter(e=>e.event===EV.KEY).length} keystrokes and `+
+    `${log.filter(e=>e.event===EV.BLUR).length} focus breaks recorded across the session.`;
+  $("#done").classList.remove("hidden");
+}
+
+addEventListener("keydown", e => {
+  if (!$("#intro").classList.contains("hidden") && e.key==="Enter"){
+    $("#intro").classList.add("hidden"); showQuestion(); return;
+  }
+  if (!$("#done").classList.contains("hidden")){
+    if (e.key.toLowerCase()==="r") location.reload();
+    if (e.key.toLowerCase()==="e"){
+      const blob = new Blob([JSON.stringify(log,null,1)], {type:"application/json"});
+      const a=document.createElement("a");
+      a.href=URL.createObjectURL(blob); a.download="behaviour_events.json"; a.click();
+    }
+  }
+});
+</script>
