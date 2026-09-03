@@ -18,6 +18,27 @@ PYTHONPATH=src ./venv/bin/python calibrate.py     # the measured thresholds
 
 `PYTHONPATH=src` is required — there is no installed package.
 
+### The live demo
+
+```bash
+# no hardware — rehearse the whole thing
+PYTHONPATH=src ./venv/bin/python live.py --calibrate-synth rest --synth corrupted
+PYTHONPATH=src ./venv/bin/python live.py --calibrate-synth rest --synth unexplained
+
+# on the device
+cd firmware && pio run -t upload && cd ..
+PYTHONPATH=src ./venv/bin/python live.py --calibrate data/rest.csv \
+    --serial /dev/ttyUSB0 --save data/run.csv
+```
+
+**Calibration is separate and deliberate, and this was a real bug.** Run
+without `--calibrate` and the baseline learns from whatever is streaming, so
+an episode that starts before calibration finishes teaches the model that
+111 bpm is this person's resting rate and then reports it as NORMAL. A wearer
+straps the device on at an arbitrary moment; "learn from whatever you see
+first" makes the device most wrong exactly when they are unwell.
+`--save-baseline` / `--load-baseline` persist it across restarts.
+
 ## What exists (Phase 0)
 
 | File | Role |
@@ -27,6 +48,9 @@ PYTHONPATH=src ./venv/bin/python calibrate.py     # the measured thresholds
 | `src/vitalguard/replay.py` | Recording → windows. The window is the unit of analysis. |
 | `docs/FIRMWARE_CONTRACT.md` | **For Sujan.** Pin map, row format, the ADC2/WiFi trap. |
 | `docs/DECISIONS.md` | Decision ledger — every choice, its alternative, and why. |
+| `firmware/src/main.cpp` | The recorder. Dual-core: hard 100 Hz sampler on core 1, SD/OLED writer on core 0. |
+| `live.py` | **The demo.** Device → screen in real time, same pipeline as the tests. |
+| `coverage.py` | The honesty ledger: how often we were willing to show a number at all. |
 
 ## The five scenarios
 
@@ -48,7 +72,7 @@ GSR is decoration and we should say so out loud.
 | Phase | Owner | What | Status |
 |---|---|---|---|
 | 0 | Abhi | Repo, record schema, replay harness, synthetic data | ✅ **done** |
-| 1a | Sujan | Firmware: sensors → timestamped CSV. Dumb, no logic. | firmware contract ready |
+| 1a | Abhi | Firmware: sensors → timestamped CSV. Dumb, no logic. | ✅ **written, compiles, untested on hardware** |
 | 1b | Abhi | Signal Quality Gate (SSQI + perfusion + accel + lead-off) | ✅ **done** |
 | 2 | Both | Collect own labelled session (button = "exercising now") | blocked on 1a |
 | 3 | Abhi | Personal Baseline + Severity Scorer, rule-based first | blocked on 2 |
@@ -69,8 +93,28 @@ windows only, `WESAD_E4` profile.**
 | Worst single subject | 4.65 bpm |
 | n | 2,517 windows |
 
-**Gate false-confirm rate — synthetic adversarial windows, `SYNTHETIC` profile.**
-0 in 306, below 0.98% at 95% confidence (one-sided rule of three).
+**Coverage — WESAD, 3 subjects (S2–S4), 3,794 windows, `WESAD_E4` profile.**
+
+| | |
+|---|---|
+| Showed a number | **88.1%** (2,652 trusted + 692 degraded) |
+| Refused | 11.9% — all "pulse waveform destroyed by artifact" |
+
+This is the metric no consumer wearable reports, because every one of them
+answers 100% by construction — it always shows something, so the question is
+never asked and the accuracy figure on the box has no denominator. **88.1%
+coverage at 3.22 bpm MAE** is a claim with a denominator. It also makes the
+refusal falsifiable in the other direction: a gate quietly tuned until it
+refuses everything would post a perfect error rate and be caught here in one
+line. `PYTHONPATH=src ./venv/bin/python coverage.py S2 S3 S4`
+
+**⚠ Gate false-confirm rate — 0 in 306. NOT AN INDEPENDENT RESULT.**
+The adversarial windows and the detector that rejects them were written by the
+same hand, against the same assumptions, on the same afternoon. A generator
+cannot audit the detector it was written alongside. The number is reported
+because it was measured, and it is worth exactly what a self-graded exam is
+worth — it belongs in the repo, not in the pitch. The only honest version of
+this claim comes from adversarial windows somebody else recorded.
 
 ### Severity scorer — WESAD, 5 subjects (S2–S6), 1,729 scored windows
 

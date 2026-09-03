@@ -11,3 +11,13 @@ data/*.csv
 # Real device recordings are kept out of git by default until we have decided
 # what is safe to publish. These are physiological recordings of real people.
 data/recordings/
+
+# PlatformIO build output and its downloaded libs -- reproducible from
+# platformio.ini, and the toolchain lives in ~/.platformio, not here.
+firmware/.pio/
+
+# Offline pip cache. Local convenience, not source. See OFFLINE.md.
+wheelhouse/
+
+# Extracted WESAD subjects: ~870 MB each, regenerated from WESAD.zip on demand.
+data/wesad/WESAD/*/*.pkl
