@@ -1,0 +1,178 @@
+{
+ "name": "arousal_v1",
+ "kind": "hist-gradient-boosting",
+ "created_utc": "2026-09-03T21:32:43+00:00",
+ "features": [
+  "hr_sigma",
+  "motion",
+  "gsr_sigma",
+  "gsr_slope",
+  "eda_peaks",
+  "rmssd",
+  "sdnn",
+  "pnn50"
+ ],
+ "trained_on": {
+  "dataset": "WESAD",
+  "windows": 5715,
+  "subjects": [
+   "S10",
+   "S11",
+   "S13",
+   "S14",
+   "S15",
+   "S16",
+   "S17",
+   "S2",
+   "S3",
+   "S4",
+   "S5",
+   "S6",
+   "S7",
+   "S8",
+   "S9"
+  ],
+  "positive_label": "stress (TSST)",
+  "negative_labels": [
+   "rest",
+   "meditation",
+   "amusement"
+  ]
+ },
+ "threshold": 0.27,
+ "loso": {
+  "per_subject": [
+   {
+    "subject": "S10",
+    "n": 424,
+    "sensitivity": 1.0,
+    "specificity": 1.0,
+    "f1": 1.0
+   },
+   {
+    "subject": "S11",
+    "n": 362,
+    "sensitivity": 0.6086956521739131,
+    "specificity": 0.9646017699115044,
+    "f1": 0.5714285714285714
+   },
+   {
+    "subject": "S13",
+    "n": 337,
+    "sensitivity": 1.0,
+    "specificity": 0.9358974358974359,
+    "f1": 0.7142857142857143
+   },
+   {
+    "subject": "S14",
+    "n": 491,
+    "sensitivity": 0.971830985915493,
+    "specificity": 0.9976190476190476,
+    "f1": 0.9787234042553191
+   },
+   {
+    "subject": "S15",
+    "n": 411,
+    "sensitivity": 0.9850746268656716,
+    "specificity": 0.8924418604651163,
+    "f1": 0.7764705882352941
+   },
+   {
+    "subject": "S16",
+    "n": 396,
+    "sensitivity": 1.0,
+    "specificity": 0.6477611940298508,
+    "f1": 0.5083333333333333
+   },
+   {
+    "subject": "S17",
+    "n": 393,
+    "sensitivity": 0.5217391304347826,
+    "specificity": 0.9913544668587896,
+    "f1": 0.6575342465753424
+   },
+   {
+    "subject": "S2",
+    "n": 357,
+    "sensitivity": 0.9354838709677419,
+    "specificity": 0.9478527607361963,
+    "f1": 0.7532467532467533
+   },
+   {
+    "subject": "S3",
+    "n": 356,
+    "sensitivity": 0.9130434782608695,
+    "specificity": 0.9290322580645162,
+    "f1": 0.7636363636363637
+   },
+   {
+    "subject": "S4",
+    "n": 422,
+    "sensitivity": 1.0,
+    "specificity": 0.9461538461538461,
+    "f1": 0.7529411764705882
+   },
+   {
+    "subject": "S6",
+    "n": 393,
+    "sensitivity": 0.92,
+    "specificity": 0.9008746355685131,
+    "f1": 0.7076923076923077
+   },
+   {
+    "subject": "S7",
+    "n": 396,
+    "sensitivity": 0.6190476190476191,
+    "specificity": 1.0,
+    "f1": 0.7647058823529411
+   },
+   {
+    "subject": "S8",
+    "n": 392,
+    "sensitivity": 0.7368421052631579,
+    "specificity": 0.9915254237288136,
+    "f1": 0.8115942028985508
+   },
+   {
+    "subject": "S9",
+    "n": 384,
+    "sensitivity": 0.4528301886792453,
+    "specificity": 0.9909365558912386,
+    "f1": 0.6
+   }
+  ],
+  "mean_sensitivity": 0.8331848326863209,
+  "mean_specificity": 0.9382893753517764,
+  "mean_f1": 0.7400423246007913,
+  "worst_sensitivity": 0.4528301886792453,
+  "worst_specificity": 0.6477611940298508,
+  "roc_auc": 0.9617786210788053,
+  "pr_auc": 0.8388472981836728,
+  "brier_raw": 0.04690172287515796,
+  "brier_calibrated": 0.04272662750632013
+ },
+ "permutation_importance": {
+  "gsr_sigma": 0.4969404937175149,
+  "hr_sigma": 0.19014269131333864,
+  "motion": 0.03972794654130931,
+  "eda_peaks": 0.012094452304683067,
+  "sdnn": 0.00955055795721571,
+  "gsr_slope": 0.007898561956495253,
+  "rmssd": 0.003547384215867777,
+  "pnn50": 0.0023935773307921515
+ },
+ "environment": {
+  "python": "3.11.11",
+  "sklearn": "1.9.0",
+  "numpy": "2.4.6"
+ },
+ "limits": [
+  "Trained on a seated lab study. WESAD has NO exercise condition, so this model has never seen exertion and cannot tell it from stress. The EXERTION branch stays with the rules.",
+  "The positive class is the TSST condition, not a person's felt stress. It is a label for an imposed situation.",
+  "The threshold and the calibrator were fitted on out-of-fold predictions of this same dataset, so both carry a mild optimism no held-out subject removes.",
+  "The calibrator was fitted on scores from models trained on 14 subjects and is applied to a model trained on 15. The shift is small and unmeasured.",
+  "Signal-quality features are excluded on purpose (see features.py). Adding them would raise every number here and measure sensor degradation instead.",
+  "This model reports a probability. It never sets a severity, and nothing in the deterministic path reads it."
+ ],
+ "sha256": "c7e71b96db56626a2a6d5a7f780f69f684e3fa121234f399ded1a8209a3497f3"
+}

@@ -23,9 +23,10 @@ import time
 from collections import deque
 from pathlib import Path
 
-from vitalguard import hr, synth
+from vitalguard import features, hr, synth
 from vitalguard.baseline import MIN_COVERAGE_S, PersonalBaseline
 from vitalguard.gate import Trust, assess
+from vitalguard.model import ArousalModel
 from vitalguard.replay import DEFAULT_HOP_S, DEFAULT_WINDOW_S, windows
 from vitalguard.schema import FIELDS, SAMPLE_RATE_HZ, Sample, read_csv
 from vitalguard.scorer import Severity, SustainedScorer, score
@@ -229,9 +230,13 @@ class LoadedBaseline(PersonalBaseline):
 
 # --- the run ---------------------------------------------------------------
 
-def run(source, save, hop_s, window_s, pb=None, bridge=None) -> None:
+def run(source, save, hop_s, window_s, pb=None, bridge=None, model=None) -> None:
     ring: deque[Sample] = deque(maxlen=int(window_s * SAMPLE_RATE_HZ))
     hop_n = int(hop_s * SAMPLE_RATE_HZ)
+    # The learned channel is loaded here and read NOWHERE in the scoring path.
+    # If it is missing, every line below prints the same verdict it always did
+    # -- the model adds a column to the report, never a decision.
+    model = model if model is not None else ArousalModel.load_or_none()
 
     pb = pb or PersonalBaseline()
     ss, cov = SustainedScorer(hop_s=hop_s), Coverage()
@@ -241,7 +246,9 @@ def run(source, save, hop_s, window_s, pb=None, bridge=None) -> None:
         fh.write(",".join(FIELDS) + "\n")
 
     print(f"{BOLD}VitalGuard live{RESET}  "
-          f"{DIM}window {window_s:.0f}s / hop {hop_s:.0f}s{RESET}\n")
+          f"{DIM}window {window_s:.0f}s / hop {hop_s:.0f}s{RESET}")
+    print(f"  {DIM}model: "
+          f"{model.card.headline if model else 'none loaded -- rules only'}{RESET}\n")
     print(f"  {'time':>7}  {'trust':^11} {'reading':<24} {'context':<12} "
           f"{'sev':<8} why")
     print(f"  {'-'*7}  {'-'*11} {'-'*24} {'-'*12} {'-'*8} {'-'*40}")
@@ -266,6 +273,7 @@ def run(source, save, hop_s, window_s, pb=None, bridge=None) -> None:
             pb.update(w, v, est)
             d = pb.deviation(est, v)
 
+            p_model = agree = None
             verdict_out = None
             if d is None:
                 base = pb.snapshot()
@@ -286,6 +294,14 @@ def run(source, save, hop_s, window_s, pb=None, bridge=None) -> None:
                 sev = sc.severity.name
                 verdict_out = (v.ppg.value, f"{d.hr_bpm:.0f}",
                                sc.context.value.upper(), sc.explanation)
+                if model is not None:
+                    # The SAME vector build_features.py trained on. Building it
+                    # a second way here would be a second definition of the
+                    # model's input, which is how a model silently starts
+                    # scoring something other than what it learned.
+                    p_model = model.p_arousal(
+                        features.extract(w, d, est, v.metrics["motion"], pb))
+                    agree = model.agreement(p_model, sc.context)
                 if sc.severity.value >= Severity.CONCERN.value:
                     ctx = f"{RED}{ctx}{RESET}"
 
@@ -298,13 +314,18 @@ def run(source, save, hop_s, window_s, pb=None, bridge=None) -> None:
                     personal_sigma=(d.personal_sigma if d is not None else None),
                     gsr_sigma=(pb.gsr_deviation(w) if d is not None else None),
                     hr_bpm=(d.hr_bpm if d is not None else None),
+                    context=(sc.context.value if d is not None else None),
+                    model_p=p_model, agreement=agree,
                 )
 
             if verdict_out and hasattr(source, "send_verdict"):
                 source.send_verdict(*verdict_out)
 
+            mcol = "" if p_model is None else (
+                f"{YELLOW}p={p_model:.2f} model disagrees{RESET}"
+                if agree == "disagree" else f"{DIM}p={p_model:.2f}{RESET}")
             print(f"  {w.t_end_ms/1000:6.1f}s  {BADGE[v.ppg]} {reading:<24} "
-                  f"{ctx:<12} {sev:<8} {DIM}{why}{RESET}")
+                  f"{ctx:<12} {sev:<8} {DIM}{why}{RESET} {mcol}")
     except KeyboardInterrupt:
         print(f"\n{DIM}stopped{RESET}")
     finally:

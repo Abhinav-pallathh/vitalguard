@@ -22,6 +22,7 @@ way?" on stage without improvising.
 | D13 | **Both clocks travel with every event; alignment is measured** | Assume the two clocks agree, or align by wall time | The game runs on `performance.now()`, the device on `millis()`. Assuming agreement makes the entire report a guess with no way to notice. Carrying both means a session can *prove* it is alignable, or say it is not. It caught its own first bug: an 882 ms spread that was our own 1 s stamping quantisation, not clock drift. |
 | D14 | **The device clock is a stamp, never a frame rate** | Derive camera fps from the stamps we already have | Discovered by running it: frames genuinely 70 ms apart can land 1 ms apart in device time, and distance/dt then produced **42,058 px/s** off a seated person. Pairs closer than `MIN_DT_S` are dropped and counted, not divided by. |
 | D15 | **No pretrained emotion or stress weights, anywhere** | Use an off-the-shelf stress classifier | Every model in this project is trained by us on WESAD, and per D7 only for algorithm *shape*. The only borrowed weights are YuNet, which finds face landmarks and makes no claim about a person's state. |
+| D17 | **The model ships as a PROBABILITY and a disagreement flag** | Ship it as a second opinion that can escalate | This makes *"the model navigates, determinism concludes"* literally true instead of aspirational. `model.py` returns `p_arousal` and one of agree / disagree / no opinion; it exposes no severity, and a test asserts `scorer.py`, `gate.py`, `baseline.py` and `hr.py` do not import it. Its false positives therefore never reach the wearer as an alarm — which is what makes it safe to tune the threshold for sensitivity (0.83) rather than for alarm rate. Same pattern as `hr.py`'s two estimators: report the disagreement, never average it away. |
 | D16 | **The practice round is the reference; a floored spread says so** | Population thresholds for behaviour metrics | Act 1 is untimed and unscored precisely so it can be the baseline — the same role `baseline.py` plays for heart rate. When the practice round is too uniform to measure spread, the floor kicks in and the sigma becomes a *lower bound*, not a z-score; the report prints "beyond practice" rather than a precision it did not earn. |
 
 ## Open questions
@@ -37,11 +38,13 @@ way?" on stage without improvising.
 - **We have still never recorded our own body.** The I2C bus is being rewired
   (see `FIRMWARE_CONTRACT.md`). Until then every threshold here is provisional
   and the EXERTION branch has zero real evidence.
-- **D8 leaves the model unshipped.** `ARCHITECTURE.md` opens with *"The model
-  navigates. Determinism concludes."* — and no model currently ships; the
-  classifier lives in `evaluate.py` as a comparison arm and is discarded. Training
-  it into a saved artifact, with the gate and the rules as the concluding layer,
-  is the outstanding work that would make that line literally true.
+- ~~**D8 leaves the model unshipped.**~~ **Closed 2026-09-04 — see D17.**
+  `models/arousal_v1.joblib` ships with a card of leave-one-subject-out numbers,
+  `live.py` runs it per window, and `/report` counts its agreements and
+  disagreements per act. It still concludes nothing. What remains open is that
+  its training data is a seated lab study, so **the EXERTION branch is outside
+  what this model has ever seen** — one real recording of our own bodies would be
+  the first data that is not WESAD.
 - **rPPG is parked, not rejected.** 90 bpm at a 3.7% spectral peak is not a
   number we will show. Its value was always *disagreement* with the finger clip,
   which cannot be measured until the finger clip works.

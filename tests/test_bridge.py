@@ -237,3 +237,38 @@ def test_report_carries_the_clock_verdict_so_it_is_never_implied(bridge):
     _q(bridge, 0, "a1q0")
     r = get(bridge, "/report")
     assert "alignable" in r and "clock_spread_ms" in r
+
+
+# --- the learned channel rides the report, and only the report ----------------
+
+def _phys(bridge, t_ms, context, model_p, agreement):
+    bridge.state.publish(device_t_ms=t_ms, trust="trusted", calibrated=True,
+                         context=context, model_p=model_p, agreement=agreement)
+
+
+def test_report_carries_the_model_as_a_count_of_opinions(bridge):
+    """A probability and a disagreement count, per act. Never a severity, and
+    never merged into the deterministic verdict."""
+    t = _q(bridge, 0, "a1q0")
+    _phys(bridge, 10, "normal", 0.10, "agree")
+    _phys(bridge, 20, "normal", 0.90, "disagree")
+    _phys(bridge, 30, "arousal", None, "no opinion")
+    r = get(bridge, "/report")
+    m = r["acts"]["1"]["model"]
+    assert (m["n_windows"], m["n_scored"], m["n_unscored"]) == (3, 2, 1)
+    assert m["n_disagree"] == 1 and m["p_max"] == 0.90
+    assert "severity" not in json.dumps(m).lower()
+
+
+def test_an_act_with_no_physiology_says_nothing_rather_than_zero(bridge):
+    """Zero windows and a mean of zero are different claims. A run with the
+    device unplugged must not read as a calm one."""
+    _q(bridge, 0, "a1q0")
+    assert "model" not in get(bridge, "/report")["acts"]["1"]
+
+
+def test_publish_without_a_device_clock_records_no_physiology_row(bridge):
+    """Every physiology row is stamped with the device clock or it does not
+    exist -- an unstamped row could not be attributed to an act."""
+    bridge.state.publish(trust="unscored", calibrated=False, model_p=0.9)
+    assert bridge.state.physiology == []

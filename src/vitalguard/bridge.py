@@ -40,6 +40,8 @@ from .behaviour import BehaviourBaseline, BehaviourEvent, Channel, Event
 from .behaviour import summarise as summarise_behaviour
 from .camera import FaceObservation
 from .camera import summarise as summarise_faces
+from .model import NO_OPINION
+from .model import summarise as summarise_model
 
 DEFAULT_PORT = 8765
 
@@ -90,6 +92,10 @@ class SharedState:
         self.calibrated: bool = False
         self.events: list[StampedEvent] = []
         self.faces: list[FaceObservation] = []
+        # One row per analysis hop: what the rules concluded, and what the
+        # model thought, kept side by side so the report can count their
+        # disagreements without either one having influenced the other.
+        self.physiology: list[dict] = []
         self.camera: object | None = None      # a CameraRunner, when one is attached
 
     # -- written by the pipeline thread ------------------------------------
@@ -109,7 +115,8 @@ class SharedState:
 
     def publish(self, *, device_t_ms: int | None = None, trust: str, calibrated: bool,
                 personal_sigma: float | None = None, gsr_sigma: float | None = None,
-                hr_bpm: float | None = None) -> None:
+                hr_bpm: float | None = None, context: str | None = None,
+                model_p: float | None = None, agreement: str | None = None) -> None:
         with self._lock:
             if device_t_ms is not None:
                 self.device_t_ms = device_t_ms
@@ -118,6 +125,12 @@ class SharedState:
             self.personal_sigma = personal_sigma
             self.gsr_sigma = gsr_sigma
             self.hr_bpm = hr_bpm
+            if device_t_ms is not None:
+                self.physiology.append({
+                    "t_ms": device_t_ms, "trust": trust, "context": context,
+                    "personal_sigma": personal_sigma, "gsr_sigma": gsr_sigma,
+                    "model_p": model_p, "agreement": agreement,
+                })
 
     # -- read by HTTP threads ----------------------------------------------
     def snapshot(self) -> dict:
@@ -189,6 +202,10 @@ class SharedState:
     def faces_between(self, t0: int, t1: int) -> list[FaceObservation]:
         with self._lock:
             return [f for f in self.faces if t0 <= f.t_ms <= t1]
+
+    def phys_between(self, t0: int, t1: int) -> list[dict]:
+        with self._lock:
+            return [w for w in self.physiology if t0 <= w["t_ms"] <= t1]
 
     def audit(self) -> ClockAudit:
         with self._lock:
@@ -333,9 +350,26 @@ class Bridge:
             cam = summarise_faces(faces) if faces else None
             return summarise_behaviour(evs, camera=cam)
 
+        def block_model(evs) -> dict | None:
+            """The learned channel over the same span, as a COUNT of opinions.
+
+            It is reported next to the rules, never merged with them: a mean
+            probability and how often the two disagreed. Nothing here changes a
+            verdict -- a reader who ignores this block loses no information the
+            deterministic path was using.
+            """
+            rows = self.state.phys_between(evs[0].t_ms, evs[-1].t_ms)
+            if not rows:
+                return None
+            return summarise_model([r["model_p"] for r in rows],
+                                   [r["agreement"] or NO_OPINION for r in rows])
+
         summaries = {a: block_summary(evs) for a, evs in sorted(blocks.items()) if evs}
         for a, s in summaries.items():
             out["acts"][a] = {"metrics": s.metrics, "n_answers": s.n_answers}
+            m = block_model(blocks[a])
+            if m is not None:
+                out["acts"][a]["model"] = m
 
         base = BehaviourBaseline()
         practice = summaries.get(1)

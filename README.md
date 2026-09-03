@@ -56,6 +56,7 @@ src/vitalguard/        the library — every number on screen comes through here
   baseline.py          the person's own resting reference, learned not assumed
   features.py          RMSSD, SDNN, pNN50, EDA peaks, gsr_sigma
   scorer.py            NORMAL / EXERTION / AROUSAL / UNEXPLAINED — rules, explainable
+  model.py             the learned channel — a probability and a disagreement flag, never a verdict
   behaviour.py         what you DID while deciding: latency, doubt, switching
   camera.py            observable face geometry from a phone. Never emotion.
   bridge.py            the one place all three channels meet on one clock
@@ -66,8 +67,11 @@ game/                  "The Gate" — the test itself. Zero dependencies, runs o
   index.html           the game
   questions.json       the question set
 models/                YuNet face detector, vendored (works with no network)
+  arousal_v1.joblib    the shipped model + its calibrator
+  arousal_v1.json      its card: leave-one-subject-out numbers, and its limits
+train_model.py         trains and scores that artifact (16 s, CPU, no GPU needed)
 docs/                  ARCHITECTURE · DECISIONS · FIRMWARE_CONTRACT · PITCH
-tests/                 153 tests
+tests/                 172 tests
 ```
 
 ---
@@ -137,7 +141,12 @@ overstate a number.
 
 **Real, measured:**
 - HR **3.22 bpm MAE** vs chest ECG at **88.1% coverage** (WESAD S2–S4, 3,794 windows)
-- Learned scorer beats rules leave-one-subject-out (F1 **0.67** vs **0.41**)
+- **The shipped model, leave-one-subject-out over 14 subjects** (`models/arousal_v1.json`):
+  mean per-subject F1 **0.74**, sensitivity **0.83**, specificity **0.938**;
+  ROC-AUC **0.962**, PR-AUC **0.839**, Brier **0.043** after calibration.
+  The rules on the identical splits: F1 **0.41**, sensitivity **0.44**, specificity **0.930**.
+  We still ship the rules as the concluding layer — see D8. The model's job is to
+  disagree with them, out loud, in the report.
 - `gsr_sigma` is the top feature; 90/100 stress windows attributed AROUSAL
 - 60 s sustain: 305 → 2.3 alarms/day at unchanged sensitivity
 - Phone camera: 95.7% face detection over 553 frames, clocks aligned to 144 ms
@@ -152,6 +161,15 @@ overstate a number.
 - **rPPG (heart rate from the face) is parked.** It ran, returned 90 bpm, and the
   spectral peak was 3.7% of the band — barely above noise. We are not shipping a
   number we don't trust; that would contradict the entire thesis.
+- **The model's worst subject is much worse than its mean** — sensitivity 0.45
+  on S9, specificity 0.648 on S16. The mean is the number nobody experiences, so
+  the model card prints the worst subject next to it, always.
+- **The model has never seen exercise.** WESAD is seated, so it cannot tell
+  exertion from stress. That branch stays with the rules, and always will while
+  this is the only training data.
+- **The model's threshold and calibrator were fitted on out-of-fold predictions**
+  of the same dataset. That is far better than fitting them in-sample, and it is
+  still not a held-out estimate. Stated on the card.
 - Episode-level detection rate is not yet measured.
 
 ---

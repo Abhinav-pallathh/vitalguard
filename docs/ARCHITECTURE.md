@@ -216,6 +216,32 @@ or contexts, and a contested black box inside an honesty-first system hands a
 judge the question that ends the pitch. A test scans every metric description
 for feeling-words. `mouth_width_ratio` is a distance; "smiling" is an inference.
 
+### The third wall: the model may navigate, and may not conclude
+
+`model.py` is the learned channel, and it ships — `models/arousal_v1.joblib`,
+trained by `train_model.py` on 5,715 WESAD windows from 15 subjects. It answers
+one question, `p_arousal(window) -> float | None`, and it is structurally unable
+to answer any other:
+
+- it returns a probability and one word — agree, disagree, or no opinion — about
+  what the rules already concluded. There is no code path in it that produces a
+  `Severity` or a `Context`.
+- **nothing in the deterministic path imports it.** A test parses the imports of
+  `scorer.py`, `gate.py`, `baseline.py` and `hr.py` and fails if `model` appears.
+- it **refuses** rather than guesses: a NaN, a short vector, or an artifact whose
+  feature order does not match `FEATURE_NAMES` returns `None` or raises at load.
+  `0.0` would read downstream as *confidently calm*, which is a lie about a
+  missing input.
+- `live.py` degrades to rules-only if the artifact is missing. The product works
+  with no model at all, which is the honest test of the claim that it decides
+  nothing.
+
+That is what buys the freedom to tune it for sensitivity (0.83 mean, threshold
+0.27) rather than for alarm rate: **a channel that cannot alarm cannot false-alarm
+at the wearer.** Its disagreements are counted per act in `/report`, which is the
+navigation — a window where the rules and the model differ is a window worth a
+human looking at.
+
 ### Everything is compared to the person's own practice round
 
 Act 1 of the game is untimed and unscored, and exists solely to be the reference
@@ -243,6 +269,8 @@ says which, and prints "beyond practice" rather than a number it did not earn.
 | behaviour + camera on one timeline | measured, live | real — 144 ms spread on a full run, and reported when it fails |
 | camera face detection | live, phone, 553 frames | real — 95.7%, after fixing a 90° rotation that had it at 2% |
 | rPPG (heart rate from the face) | probed 2026-09-04 | **rejected for now — 90 bpm at a 3.7% spectral peak is barely above noise.** Not shipped, because shipping it would contradict the thesis |
+| shipped model (`arousal_v1`) | WESAD, leave-one-subject-out, 14 scorable subjects | real — mean per-subject F1 **0.74**, sensitivity 0.83, specificity 0.938, ROC-AUC 0.962. ⚠ **worst subject: sensitivity 0.45, specificity 0.648.** Threshold and calibrator fitted out-of-fold on this same dataset |
+| the model on exertion | none | **it has never seen exercise.** WESAD is seated; that branch is the rules' alone |
 | any recording from OUR hardware | none yet | **the I2C bus is still being rewired. Every threshold below is provisional.** |
 
 Read `../README.md` for the numbers and `DECISIONS.md` for why each choice

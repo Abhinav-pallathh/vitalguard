@@ -300,7 +300,7 @@ continuous-sensing system that reports accuracy without a denominator.
 | Library | OpenCV | Frame capture and face detection for the camera behaviour channel | Borrowed | Apache 2.0 |
 | Model weights | YuNet `face_detection_yunet_2023mar.onnx` (OpenCV Zoo) | Face landmarks for head motion / tilt / turn. **Geometry only — never emotion.** | Borrowed | MIT |
 | Model weights | No *emotion* or *stress* model weights used | — | — | — |
-| Code | All of `src/vitalguard/`, `firmware/src/main.cpp`, tests, evaluation scripts | Quality gate, HR estimation, personal baseline, behaviour + camera channels, the bridge, firmware, 153 tests | **Ours** | — |
+| Code | All of `src/vitalguard/`, `firmware/src/main.cpp`, tests, evaluation scripts | Quality gate, HR estimation, personal baseline, behaviour + camera channels, the bridge, firmware, the shipped model, 172 tests | **Ours** | — |
 
 > No pretrained model weights are used anywhere. The scorer is trained by us on
 > WESAD features, and per decision D7 WESAD is used for algorithm *shape* only —
