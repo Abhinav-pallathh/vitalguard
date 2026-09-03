@@ -21,3 +21,7 @@ wheelhouse/
 
 # Extracted WESAD subjects: ~870 MB each, regenerated from WESAD.zip on demand.
 data/wesad/WESAD/*/*.pkl
+
+# Flash backup of the board as it arrived (Sujan sketch). 4 MB binary, kept on
+# disk, not in a repo whose .git is already 2.6 GB. See docs/ notes for restore.
+firmware/backup/
