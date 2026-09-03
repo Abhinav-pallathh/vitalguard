@@ -109,7 +109,8 @@ corrupts every frequency-domain measurement we make downstream.
 
 ## First deliverable
 
-60 seconds of `rest`, sitting still, ear clip on, electrodes attached.
+60 seconds of `rest`, sitting still, PPG sensor in contact, electrodes attached.
+(The ear clip was dropped 2026-09-02; final sensor placement is still open.)
 
 **Do this on the breadboard. Do not wait for the perfboard.** The breadboard rig
 already reads all three sensors; the perfboard is a form-factor upgrade, not a

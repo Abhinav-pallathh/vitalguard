@@ -1,6 +1,7 @@
 # VitalGuard — how the whole thing works
 
-Written 2026-09-02 so both of us are looking at the same picture.
+Written 2026-09-02. **Updated 2026-09-04** — the project became an interactive
+pressure test, which added two more channels and a clock to reconcile them.
 
 ---
 
@@ -27,8 +28,8 @@ Everything below exists to serve those two refusals.
  │                                                                      │
  │   MAX30102  ──I2C(21/22)──┐                                          │
  │   MPU6050   ──I2C(21/22)──┤                                          │
- │   GSR       ──ADC1 GPIO34─┤   firmware = a DUMB RECORDER             │
- │   AD8232    ──ADC1 GPIO35─┤   reads sensors, writes rows,            │
+ │   AD8232    ──ADC1 GPIO34─┤   firmware = a DUMB RECORDER             │
+ │   GSR       ──ADC1 GPIO35─┤   reads sensors, writes rows,            │
  │   LO+/LO−   ──GPIO 32/33──┘   computes NOTHING                       │
  │                                                                      │
  └────────────────────────────────┬─────────────────────────────────────┘
@@ -159,15 +160,90 @@ further along.
 
 ---
 
+## The other two channels, and the clock that lets them be combined
+
+The diagram above is the *physiology* pipeline, and until 2026-09-03 it was the
+whole product. The project is now an interactive pressure test, which means two
+more channels — and the moment you have three channels you have a clock problem.
+
+```
+   BROWSER (game/index.html)          PYTHON (live.py)           PHONE
+   The Gate: 4 options, a clock       the pipeline above         MJPEG stream
+        │                                    │                       │
+        │ one POST per event,                │ 100 Hz rows           │ ~14 fps
+        │ NEVER batched                      │                       │
+        ▼                                    ▼                       ▼
+   ┌────────────────────────────────────────────────────────────────────┐
+   │  bridge.py — the ONLY place the three meet                         │
+   │                                                                    │
+   │  · serves the game (so it is same-origin, not file://)             │
+   │  · stamps every browser event with the DEVICE clock on arrival     │
+   │  · CameraRunner is handed a `stamp` and a `sink` — it never         │
+   │    becomes a second source of truth about time                     │
+   │  · /state  — live personal_sigma, so the door reads the real body   │
+   │  · /report — every act vs the person's OWN practice round           │
+   └────────────────────────────────┬───────────────────────────────────┘
+                                    ▼
+                        one timeline, or an honest refusal
+```
+
+### The clock is measured, never assumed
+
+The browser runs on `performance.now()`; the device runs on `millis()`. Every
+event therefore carries **both** clocks, and the audit reports the measured
+offset spread. A session that cannot demonstrate agreement is reported as **not
+alignable**, and the report is then forbidden from laying the channels on one
+timeline.
+
+This is not defensive decoration — it caught its own first bug. Stamping once
+per 1 s analysis hop produced an 882 ms spread that was pure quantisation, not
+clock disagreement. The clock now ticks per sample; measured spread is ~25 ms.
+
+**The one rule that keeps it honest: events are POSTed one at a time, as they
+happen.** If the browser ever batches, arrival time stops meaning event time and
+every alignment silently gains the batch interval as error.
+
+### Two walls, both enforced by tests
+
+**1. Behaviour and camera never reach the scorer.** The test gets harder over
+time *by construction*, so any behaviour signal drifts by construction. A model
+given both would learn "slow answers = stress" and score **the clock** while
+appearing to score the body. A test fails if either module exports a feature.
+
+**2. No metric may name a feeling.** Facial emotion recognition was proposed and
+rejected — the facial-movement→emotion mapping is not consistent across people
+or contexts, and a contested black box inside an honesty-first system hands a
+judge the question that ends the pitch. A test scans every metric description
+for feeling-words. `mouth_width_ratio` is a distance; "smiling" is an inference.
+
+### Everything is compared to the person's own practice round
+
+Act 1 of the game is untimed and unscored, and exists solely to be the reference
+— the same role `baseline.py` plays for heart rate, one layer up. Without it
+every behaviour metric would need a population threshold, which is the
+cross-person scoring this project refuses. No practice round means no
+deviations and a stated reason, never a fallback to fixed numbers.
+
+⚠ **A floored spread is not a z-score.** If the practice round is too uniform to
+measure spread, the baseline uses a floor — and the resulting sigma is then a
+*lower bound on how unusual something was*, not a calibrated score. The report
+says which, and prints "beyond practice" rather than a number it did not earn.
+
+---
+
 ## What is validated, and what is not
 
 | claim | evidence | status |
 |---|---|---|
 | HR accuracy 3.22 bpm MAE | WESAD, 7 subjects, 2517 windows, vs ECG | real, but the ECG reference is our own unvalidated detector |
 | gate false-confirm 0/306 | our own synthetic data | **circular — we wrote the data and the detector** |
-| scorer false alarms 1.15% | WESAD, 5 subjects | **≈133 alarms/simulated day. Unusable.** |
+| scorer false alarms 1.15% | WESAD, 5 subjects | **≈133 alarms/simulated day — unusable per-window.** A 60 s sustain rule closes this to **2.3/day at unchanged sensitivity**. The fix was never a better model. |
 | stress accuracy collapse | WESAD, 7 subjects | real and consistent |
 | EXERTION branch works | synthetic only | **unvalidated — WESAD is a seated study** |
+| behaviour + camera on one timeline | measured, live | real — 144 ms spread on a full run, and reported when it fails |
+| camera face detection | live, phone, 553 frames | real — 95.7%, after fixing a 90° rotation that had it at 2% |
+| rPPG (heart rate from the face) | probed 2026-09-04 | **rejected for now — 90 bpm at a 3.7% spectral peak is barely above noise.** Not shipped, because shipping it would contradict the thesis |
+| any recording from OUR hardware | none yet | **the I2C bus is still being rewired. Every threshold below is provisional.** |
 
 Read `../README.md` for the numbers and `DECISIONS.md` for why each choice
 was made.

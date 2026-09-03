@@ -1,4 +1,4 @@
-# Offline readiness — cached 2026-09-03, before the venue wifi
+# Offline readiness — cached 2026-09-03, **updated 2026-09-04** (camera + game)
 
 Everything below is on this laptop **now**. Verified, not assumed: the firmware
 was compiled inside a network namespace with no route to the internet
@@ -14,9 +14,35 @@ here needs it.
 | WESAD, full | `data/wesad/WESAD.zip` | 2.1 G | ✅ |
 | WESAD S2–S4 extracted | `data/wesad/WESAD/` | 2.9 G | ✅ coverage ran on it |
 | USB-serial kernel drivers | in-kernel | — | ✅ cp210x, ch341, ftdi_sio, cdc_acm all present |
+| **YuNet face detector** | `models/face_detection_yunet_2023mar.onnx` | 227 K | ✅ sha256 verified, loads with no network |
+| **Haar cascades (fallback)** | `models/haarcascade_*.xml` | 1.5 M | ✅ downloaded 09-04 |
+| **opencv-python-headless 5.0** | `wheelhouse/` + installed into `venv/` | 61 M | ✅ ran against the live phone stream |
+| **The game** | `game/index.html` + `questions.json` | 44 K | ✅ zero dependencies — no CDN, no webfonts, no images. Opens from `file://` with the network unplugged |
+| **Ambient audio** | `game/assets/ambient.ogg` | 581 K | ✅ on disk, gitignored (licence unconfirmed). The game runs silent without it |
 
 PlatformIO's update checks are throttled to 999999 days, so it will not stall
 on a dead network looking for a newer core.
+
+## ⚠ Two camera traps found on 2026-09-04
+
+**`opencv-python-headless` 5.0 ships NO Haar cascades.** `cv2/data/` contains two
+files and neither is a detector, so `cv2.data.haarcascades` resolves to an empty
+directory. Everything the camera needs is vendored in `models/` for that reason —
+do not rely on OpenCV bringing its own.
+
+**This laptop has no camera at all** — no `/dev/video*`, `uvcvideo` not loaded.
+The phone is the only camera, over MJPEG on the LAN (IP Webcam). That needs the
+laptop and phone on the same network, which at a venue means a **phone hotspot,
+not the venue wifi**. Check it before trusting it:
+
+```bash
+./venv/bin/python camcheck.py http://<phone-ip>:8080/video
+```
+
+It reports whether the stream opens, the real measured fps, and whether a face is
+actually being found — and names what to touch when the answer is no. A phone in
+portrait streams sideways, which finds a face in ~2% of frames and looks exactly
+like a dead camera; the reader auto-corrects for it and prints the rotation.
 
 ## ⚠ The one thing that will waste 20 minutes at the venue
 

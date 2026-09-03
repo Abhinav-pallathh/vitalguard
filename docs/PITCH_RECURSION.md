@@ -32,10 +32,10 @@ refuses to score a signal it doesn't trust.
 [ fill — Edition II track list ]
 
 **TEAM**
-BioForge
+Munix
 Abhinav Pallath
 Sujan
-[ others / blank ]
+Adesh
 
 ---
 
@@ -297,9 +297,10 @@ continuous-sensing system that reports accuracy without a denominator.
 | Repository | Adafruit MPU6050 / SSD1306 / GFX / BusIO / Unified Sensor | IMU + OLED drivers | Borrowed | BSD / MIT |
 | Documentation | Espressif Arduino-ESP32 core (platform espressif32@6.9.0) | Dual-core task pinning, ADC1-vs-ADC2 constraint | Borrowed | LGPL / Apache 2.0 |
 | Library | NumPy, SciPy | Signal processing and numerics | Borrowed | BSD-3-Clause |
-| Library | OpenCV (Haar cascades) | Face/eye detection for fidget and gaze-off behaviour metrics | Borrowed | Apache 2.0 |
-| Model weights | None used | — | — | — |
-| Code | All of `src/vitalguard/`, `firmware/src/main.cpp`, tests, evaluation scripts | Quality gate, HR estimation, personal baseline, behaviour channel, firmware, 103 tests | **Ours** | — |
+| Library | OpenCV | Frame capture and face detection for the camera behaviour channel | Borrowed | Apache 2.0 |
+| Model weights | YuNet `face_detection_yunet_2023mar.onnx` (OpenCV Zoo) | Face landmarks for head motion / tilt / turn. **Geometry only — never emotion.** | Borrowed | MIT |
+| Model weights | No *emotion* or *stress* model weights used | — | — | — |
+| Code | All of `src/vitalguard/`, `firmware/src/main.cpp`, tests, evaluation scripts | Quality gate, HR estimation, personal baseline, behaviour + camera channels, the bridge, firmware, 153 tests | **Ours** | — |
 
 > No pretrained model weights are used anywhere. The scorer is trained by us on
 > WESAD features, and per decision D7 WESAD is used for algorithm *shape* only —
@@ -316,22 +317,22 @@ continuous-sensing system that reports accuracy without a denominator.
   remember.
 - Demo with no hardware and no network:
   `live.py --calibrate-synth rest --synth unexplained`
-- [ GitHub link — **currently not possible.** The repo's `.git` is 2.6 GB
-  (WESAD.zip and an S2.pkl are committed into history) and GitHub hard-rejects
-  it. If the submission requires a repo URL, say so and we run `git filter-repo`
-  — about 20 minutes. ]
+- **GitHub: https://github.com/Abhinav-pallathh/vitalguard** (public).
+  Resolved 2026-09-04 — `WESAD.zip` and an `S2.pkl` had been committed into
+  history and GitHub hard-rejects blobs over 100 MB, so `git filter-repo` took
+  `.git` from 2.6 GB to 1.4 MB with all 22 commits and their dates intact.
 
 ---
 
 # FRAME 09 — Team & contact
 
-[ Team name: BioForge ]
+[ Team name: Munix ]
 
 | NAME | PHONE | EMAIL |
 |---|---|---|
 | Abhinav Pallath | [ ] | abhinavpallath14@gmail.com |
 | Sujan | [ ] | [ ] |
-| [ ] | [ ] | [ ] |
+| Adesh | [ ] | [ ] |
 
 ---
 

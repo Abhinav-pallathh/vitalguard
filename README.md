@@ -1,7 +1,7 @@
 # VitalGuard — The Gate
 
 **A composure trainer that refuses to lie to you.**
-Team BioForge · Recursion Edition II
+Team Munix · Recursion Edition II
 
 You sit a short, timed, deliberately grim test while a wrist-worn ESP32 records
 your body. Afterwards it tells you what your body did while you decided — and
@@ -173,5 +173,5 @@ device records but cannot score.**
 
 ## Team
 
-**Team BioForge** — Recursion Edition II
+**Team Munix** — Recursion Edition II
 Abhinav Pallath · Sujan · Adesh
