@@ -229,7 +229,7 @@ class LoadedBaseline(PersonalBaseline):
 
 # --- the run ---------------------------------------------------------------
 
-def run(source, save, hop_s, window_s, pb=None) -> None:
+def run(source, save, hop_s, window_s, pb=None, bridge=None) -> None:
     ring: deque[Sample] = deque(maxlen=int(window_s * SAMPLE_RATE_HZ))
     hop_n = int(hop_s * SAMPLE_RATE_HZ)
 
@@ -250,6 +250,8 @@ def run(source, save, hop_s, window_s, pb=None) -> None:
     try:
         for s in source:
             ring.append(s)
+            if bridge is not None:
+                bridge.state.tick(s.t_ms)   # 10 ms resolution, not 1 s
             if fh:
                 fh.write(",".join(str(getattr(s, f)) for f in FIELDS) + "\n")
             since_hop += 1
@@ -287,6 +289,17 @@ def run(source, save, hop_s, window_s, pb=None) -> None:
                 if sc.severity.value >= Severity.CONCERN.value:
                     ctx = f"{RED}{ctx}{RESET}"
 
+            if bridge is not None:
+                b = pb.snapshot()
+                bridge.state.publish(
+                    device_t_ms=int(w.t_end_ms),
+                    trust=v.ppg.value,
+                    calibrated=b.calibrated,
+                    personal_sigma=(d.personal_sigma if d is not None else None),
+                    gsr_sigma=(pb.gsr_deviation(w) if d is not None else None),
+                    hr_bpm=(d.hr_bpm if d is not None else None),
+                )
+
             if verdict_out and hasattr(source, "send_verdict"):
                 source.send_verdict(*verdict_out)
 
@@ -322,6 +335,10 @@ def main() -> None:
                    help="restore a baseline saved by --save-baseline")
     p.add_argument("--save-baseline", metavar="JSON",
                    help="persist the learned baseline for later runs")
+    p.add_argument("--bridge", nargs="?", const=8765, type=int, metavar="PORT",
+                   help="serve game/ and carry its events onto the device clock")
+    p.add_argument("--session", metavar="JSON", default="session.json",
+                   help="where --bridge writes events + the clock audit")
     p.add_argument("--hop", type=float, default=DEFAULT_HOP_S)
     p.add_argument("--window", type=float, default=DEFAULT_WINDOW_S)
     a = p.parse_args()
@@ -345,7 +362,26 @@ def main() -> None:
     else:
         source = from_synth(a.synth, a.seconds, realtime=not a.fast)
 
-    run(source, a.save, a.hop, a.window, pb=pb)
+    br = None
+    if a.bridge:
+        from vitalguard.bridge import Bridge
+        br = Bridge(Path(__file__).parent / "game", port=a.bridge).start()
+        print(f"{BOLD}bridge{RESET} {CYAN}{br.url}{RESET}  "
+              f"{DIM}open the game there, NOT from file://{RESET}\n")
+    try:
+        run(source, a.save, a.hop, a.window, pb=pb, bridge=br)
+    finally:
+        if br is not None:
+            audit = br.save(a.session)
+            # The alignment is reported, never assumed. If this says no, the
+            # report cannot put behaviour and physiology on one timeline and
+            # must say so rather than quietly interleaving them.
+            verdict = f"{GREEN}alignable{RESET}" if audit.alignable else f"{RED}NOT alignable{RESET}"
+            print(f"\n{BOLD}clock{RESET} {verdict}  "
+                  f"{DIM}n={audit.n} offset={audit.offset_median_ms} "
+                  f"spread={audit.offset_spread_ms}ms unstamped={audit.unstamped}{RESET}")
+            print(f"{DIM}session -> {a.session}{RESET}")
+            br.stop()
 
 
 if __name__ == "__main__":
