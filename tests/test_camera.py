@@ -90,3 +90,49 @@ def test_camera_exports_nothing_the_scorer_can_consume():
     assert not hasattr(cam, "FEATURE_NAMES")
     assert not hasattr(cam, "features")
     assert not any("feature" in n.lower() for n in dir(cam))
+
+
+# --- the geometry added after Abhi asked what else the face can give us -----
+
+def test_tilt_is_the_eye_line_angle():
+    level = obs(0, eye_r=(90., 100.), eye_l=(130., 100.))
+    tipped = obs(1, eye_r=(90., 100.), eye_l=(130., 140.))     # 40 across, 40 down
+    assert level.tilt_deg == pytest.approx(0.0)
+    assert tipped.tilt_deg == pytest.approx(45.0)
+    out = summarise([level, tipped])
+    assert out["head_tilt_range_deg"] == pytest.approx(45.0)
+
+
+def test_mouth_ratio_is_scale_free():
+    """The eye span is the only rigid ruler a face carries. Moving nearer the
+    phone must not change the ratio, or every metric becomes a distance metric."""
+    near = obs(0, eye_r=(0., 0.), eye_l=(80., 0.), mouth_r=(20., 60.), mouth_l=(60., 60.))
+    far = obs(1, eye_r=(0., 0.), eye_l=(40., 0.), mouth_r=(10., 30.), mouth_l=(30., 30.))
+    assert near.mouth_ratio == pytest.approx(0.5)
+    assert far.mouth_ratio == pytest.approx(0.5)
+
+
+def test_mouth_ratio_is_named_after_the_distance_not_a_state():
+    """It rises for a grin, a grimace and a jaw stretch alike. Nothing here is
+    allowed to guess which -- that guess is the rejected face-emotion claim."""
+    unit, phrasing = METRICS["mouth_width_ratio"]
+    assert "smile" not in phrasing.lower() and "smil" not in "mouth_width_ratio"
+    assert "distance" in phrasing.lower()
+
+
+def test_landmarks_missing_means_none_not_a_default():
+    o = obs(0, mouth_r=None, mouth_l=None)
+    assert o.mouth_ratio is None
+    assert summarise([o, obs(1, mouth_r=None, mouth_l=None)])["mouth_width_ratio"] is None
+
+
+def test_rotation_defaults_to_uncalibrated_not_to_zero():
+    """A phone in portrait streams sideways and YuNet only sees upright faces.
+    On the first real stream that gave a face in 2% of frames -- indistinguishable
+    from bad lighting. The reader must not silently assume upright."""
+    import inspect
+
+    from vitalguard.camera import FaceReader
+    src = inspect.getsource(FaceReader)
+    assert "self.rotation: int | None = None" in src
+    assert "calibrate" in src

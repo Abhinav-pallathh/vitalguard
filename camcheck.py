@@ -38,6 +38,7 @@ def main() -> int:
         print(f"{RED}model missing:{RESET} {MODEL}")
         return 1
 
+    t0 = time.time()
     print(f"{BOLD}opening{RESET} {src}  {DIM}(up to 10s){RESET}")
     cap = cv2.VideoCapture(src)
     cap.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 10_000)
@@ -50,7 +51,24 @@ def main() -> int:
         return 1
 
     reader = FaceReader(str(MODEL))
-    obs, t0, dropped = [], time.time(), 0
+
+    # Settle orientation FIRST. A rotated stream looks identical to bad lighting.
+    probe = []
+    while len(probe) < 6 and time.time() - t0 < 6:
+        ok, f = cap.read()
+        if ok:
+            probe.append(f)
+    rot = reader.calibrate(probe) if probe else None
+    if rot is None:
+        print(f"  ROTATION {YELLOW}no face at any rotation{RESET} -- continuing at 0 deg")
+        reader.rotation = 0
+    elif rot:
+        print(f"  ROTATION {GREEN}{rot} deg{RESET}  {DIM}stream is sideways; corrected in software{RESET}")
+    else:
+        print(f"  ROTATION {GREEN}upright{RESET}")
+
+    obs, dropped = [], 0
+    t0 = time.time()
     while time.time() - t0 < seconds:
         ok, frame = cap.read()
         if not ok:
