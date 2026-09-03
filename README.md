@@ -25,11 +25,23 @@ PYTHONPATH=src ./venv/bin/python calibrate.py     # the measured thresholds
 PYTHONPATH=src ./venv/bin/python live.py --calibrate-synth rest --synth corrupted
 PYTHONPATH=src ./venv/bin/python live.py --calibrate-synth rest --synth unexplained
 
-# on the device
+# on the device -- rows go up, the verdict comes back down to the OLED
 cd firmware && pio run -t upload && cd ..
 PYTHONPATH=src ./venv/bin/python live.py --calibrate data/rest.csv \
     --serial /dev/ttyUSB0 --save data/run.csv
 ```
+
+**The device displays a conclusion it did not reach.** Raw rows go up the
+serial line at 230400; the laptop runs the same gate/scorer the test suite
+covers; one line comes back and the OLED paints it. Reimplementing the gate in
+C would create a second source of truth for the one decision the whole product
+rests on, and the firmware copy would have no tests to keep it honest. The
+honest cost, stated on stage rather than hidden: **untethered, this device
+records but cannot score.** That is Phase 4.
+
+A verdict older than 3 s expires and the display falls back to recorder
+status — a stale verdict shown as current is the exact failure the product
+exists to refuse, and the display is not exempt from its own thesis.
 
 **Calibration is separate and deliberate, and this was a real bug.** Run
 without `--calibrate` and the baseline learns from whatever is streaming, so
@@ -76,7 +88,7 @@ GSR is decoration and we should say so out loud.
 | 1b | Abhi | Signal Quality Gate (SSQI + perfusion + accel + lead-off) | ✅ **done** |
 | 2 | Both | Collect own labelled session (button = "exercising now") | blocked on 1a |
 | 3 | Abhi | Personal Baseline + Severity Scorer, rule-based first | blocked on 2 |
-| 4 | Both | On-device inference → OLED + buzzer | |
+| 4 | Both | On-device inference → OLED + buzzer | OLED + buzzer ✅ **live, driven over serial**; on-device inference not started |
 | 5 | Both | Dashboard + demo script | |
 
 ## Measured results

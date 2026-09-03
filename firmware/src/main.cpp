@@ -55,6 +55,10 @@ static const int PIN_SD_CS    =  5;
 // ECG on 35 are ADC1 and are therefore safe. WiFi is not enabled in this
 // firmware at all, which is the belt to that braces.
 
+// 230400, not 115200. At 100 Hz a row is ~60 bytes = 6 kB/s, which is 52% of
+// a 115200 line -- and the verdict channel below shares it. Any hiccup at 52%
+// utilisation drops rows, and a dropped row is a corrupted sample rate.
+static const uint32_t SERIAL_BAUD = 230400;
 static const uint32_t SAMPLE_HZ  = 100;
 static const uint32_t PERIOD_US  = 1000000UL / SAMPLE_HZ;
 
@@ -201,29 +205,135 @@ static void write_meta() {
   m.close();
 }
 
+// --- the verdict channel ---------------------------------------------------
+//
+// The device displays a conclusion it did not reach. Rows go up the serial
+// line; the laptop runs the SAME gate / hr / baseline / scorer the test suite
+// covers; one line comes back:
+//
+//     V,<trust>,<bpm|-->,<context>,<reason>
+//
+// This is deliberate, and it is not a shortcut around D2. Reimplementing the
+// gate in C would create a second source of truth for the one decision the
+// whole product rests on, and the two would drift -- silently, because the
+// firmware copy has no test suite. The device stays a dumb recorder and a dumb
+// display. What it shows is exactly what the verified pipeline concluded.
+//
+// The honest cost: an untethered device cannot score. That is Phase 4, and
+// pretending otherwise on stage would be the one lie this project cannot tell.
+
+static char     g_trust[10]  = "";
+static char     g_bpm[8]     = "";
+static char     g_ctx[14]    = "";
+static char     g_why[42]    = "";
+static uint32_t g_verdict_ms = 0;
+
+static void read_verdict() {
+  static char line[128];
+  static size_t n = 0;
+  while (Serial.available()) {
+    char c = Serial.read();
+    if (c == '\n' || n >= sizeof(line) - 1) {
+      line[n] = 0; n = 0;
+      if (line[0] == 'V' && line[1] == ',') {
+        char *p = line + 2, *f[4] = {nullptr, nullptr, nullptr, nullptr};
+        for (int i = 0; i < 4 && p; i++) {
+          f[i] = p;
+          char *comma = strchr(p, ',');
+          if (comma) { *comma = 0; p = comma + 1; } else p = nullptr;
+        }
+        if (f[0]) strncpy(g_trust, f[0], sizeof(g_trust) - 1);
+        if (f[1]) strncpy(g_bpm,   f[1], sizeof(g_bpm)   - 1);
+        if (f[2]) strncpy(g_ctx,   f[2], sizeof(g_ctx)   - 1);
+        if (f[3]) strncpy(g_why,   f[3], sizeof(g_why)   - 1);
+        g_verdict_ms = millis();
+      }
+    } else if (c != '\r') {
+      line[n++] = c;
+    }
+  }
+}
+
+// Wrap a reason across the 21-char line the 128 px display gives at size 1,
+// breaking on spaces. A truncated reason is a refusal the wearer cannot act
+// on, which is the same as no reason at all.
+static void print_wrapped(const char *text, int y, int max_lines) {
+  int line = 0, i = 0;
+  while (text[i] && line < max_lines) {
+    int take = 0, last_space = -1;
+    while (text[i + take] && take < 21) {
+      if (text[i + take] == ' ') last_space = take;
+      take++;
+    }
+    if (text[i + take] && last_space > 0) take = last_space;
+    oled.setCursor(0, y + line * 8);
+    for (int k = 0; k < take; k++) oled.write(text[i + k]);
+    i += take;
+    while (text[i] == ' ') i++;
+    line++;
+  }
+}
+
 static void paint(bool recording) {
   if (!has_oled) return;
   oled.clearDisplay();
   oled.setTextColor(SSD1306_WHITE);
 
-  oled.setTextSize(2);
-  oled.setCursor(0, 0);
-  oled.println(recording ? "REC" : "IDLE");
+  // A verdict older than 3 s is a stale verdict, and a stale verdict shown as
+  // current is the exact failure this product exists to refuse. It expires.
+  bool fresh = g_verdict_ms && (millis() - g_verdict_ms) < 3000;
 
-  oled.setTextSize(1);
-  oled.setCursor(0, 20);
-  oled.printf("rows  %lu\n", (unsigned long)g_written);
-  // Drops are on the FIRST screen, not in a debug menu. A number the wearer
-  // can see is a number somebody checks.
-  oled.printf("drop  %lu\n", (unsigned long)g_dropped);
-  oled.printf("label %s\n", LABELS[g_label]);
-  oled.printf("%s%s%s%s\n", has_ppg ? "PPG " : "-- ", has_imu ? "IMU " : "-- ",
-                            has_sd  ? "SD "  : "-- ", "");
+  if (fresh) {
+    if (!strcmp(g_trust, "unscored")) {
+      // THE screen. No number. Not the last one, not an estimate, not a dash
+      // that could be mistaken for a low reading.
+      oled.setTextSize(2); oled.setCursor(0, 0);  oled.println("NO");
+      oled.setCursor(0, 16); oled.println("READING");
+      oled.setTextSize(1);
+      print_wrapped(g_why, 36, 3);
+    } else {
+      oled.setTextSize(3); oled.setCursor(0, 0);
+      oled.print(g_bpm);
+      oled.setTextSize(1); oled.print(" bpm");
+      if (!strcmp(g_trust, "degraded")) { oled.setCursor(100, 16); oled.print("~low"); }
+      oled.setTextSize(1); oled.setCursor(0, 28); oled.println(g_ctx);
+      print_wrapped(g_why, 40, 3);
+    }
+  } else {
+    oled.setTextSize(2); oled.setCursor(0, 0);
+    oled.println(recording ? "REC" : "IDLE");
+    oled.setTextSize(1); oled.setCursor(0, 20);
+    oled.printf("rows  %lu\n", (unsigned long)g_written);
+    // Drops are on the FIRST screen, not in a debug menu. A number the wearer
+    // can see is a number somebody checks.
+    oled.printf("drop  %lu\n", (unsigned long)g_dropped);
+    oled.printf("label %s\n", LABELS[g_label]);
+    oled.printf("%s%s%s\n", has_ppg ? "PPG " : "--  ", has_imu ? "IMU " : "--  ",
+                             has_sd  ? "SD "  : "--  ");
+  }
   oled.display();
 }
 
+// The buzzer is the thesis, audible. It sounds for an UNEXPLAINED elevation
+// and stays SILENT through an identical heart rate that motion or skin
+// conductance explains. A device that beeps at every workout is a device
+// somebody switches off, and then it is not there on the day it matters.
+static void alarm_if_needed() {
+  static uint32_t last = 0;
+  bool fresh = g_verdict_ms && (millis() - g_verdict_ms) < 3000;
+  bool alarming = fresh && !strcmp(g_ctx, "UNEXPLAINED")
+                  && strcmp(g_trust, "unscored") != 0;
+  if (alarming && millis() - last > 4000) {
+    last = millis();
+    for (int i = 0; i < 3; i++) {
+      digitalWrite(PIN_BUZZER, HIGH); delay(70);
+      digitalWrite(PIN_BUZZER, LOW);  delay(90);
+    }
+  }
+}
+
 void setup() {
-  Serial.begin(115200);
+  Serial.begin(SERIAL_BAUD);
   delay(300);
   Serial.println("\nVitalGuard recorder");
 
@@ -313,6 +423,8 @@ void loop() {
     digitalWrite(PIN_BUZZER, HIGH); delay(25); digitalWrite(PIN_BUZZER, LOW);
   }
 
+  read_verdict();
+
   size_t drained = 0;
   while (g_tail != g_head && drained < 256) {
     emit(g_ring[g_tail]);
@@ -321,7 +433,7 @@ void loop() {
   }
   flush_out();
 
-  if (millis() - last_paint > 500) { last_paint = millis(); paint(true); }
+  if (millis() - last_paint > 500) { last_paint = millis(); paint(true); alarm_if_needed(); }
   if (has_sd && millis() - last_meta > 5000) {
     last_meta = millis();
     logfile.flush();          // survive a yanked battery mid-recording

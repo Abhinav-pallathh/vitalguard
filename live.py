@@ -44,19 +44,29 @@ BADGE = {
 # Each yields Sample objects. The pipeline cannot tell them apart, which is the
 # point: what we rehearse on synthetic data is exactly what runs on hardware.
 
-def from_serial(port: str, baud: int = 115200):
-    """Rows straight off the ESP32. Malformed rows are COUNTED and skipped.
+class SerialSource:
+    """Rows off the ESP32, and verdicts back to it on the same line.
 
-    Never repaired, never interpolated. A partial row at 100 Hz is a row the
-    device could not vouch for, and silently patching one is the same failure
-    as holding a stale reading over -- it produces a file that looks complete.
+    Malformed rows are COUNTED and skipped -- never repaired, never
+    interpolated. A partial row at 100 Hz is a row the device could not vouch
+    for, and silently patching one is the same failure as holding a stale
+    reading over: it produces a file that looks complete.
+
+    `send_verdict` is the return path. The device displays a conclusion it did
+    not compute, because reimplementing the gate in firmware would create a
+    second source of truth for the one decision the product rests on -- and
+    the firmware copy would have no test suite to keep it honest.
     """
-    import serial                              # pyserial, imported lazily
-    with serial.Serial(port, baud, timeout=2) as sp:
+
+    def __init__(self, port: str, baud: int = 230400) -> None:
+        import serial                          # pyserial, imported lazily
+        self._sp = serial.Serial(port, baud, timeout=2)
+        self.bad = 0
+
+    def __iter__(self):
         header = None
-        bad = 0
         while True:
-            raw = sp.readline().decode("ascii", "replace").strip()
+            raw = self._sp.readline().decode("ascii", "replace").strip()
             if not raw:
                 continue
             parts = raw.split(",")
@@ -71,10 +81,23 @@ def from_serial(port: str, baud: int = 115200):
             try:
                 yield _parse(parts)
             except (ValueError, IndexError):
-                bad += 1
-                if bad in (1, 10, 100, 1000):
-                    print(f"{DIM}[{bad} malformed rows skipped]{RESET}",
+                self.bad += 1
+                if self.bad in (1, 10, 100, 1000):
+                    print(f"{DIM}[{self.bad} malformed rows skipped]{RESET}",
                           file=sys.stderr)
+
+    def send_verdict(self, trust: str, bpm: str, ctx: str, why: str) -> None:
+        # Commas are the field separator, so a reason containing one would
+        # shift every field after it on the device -- the same silent
+        # column-shift schema.read_csv refuses to allow.
+        why = why.replace(",", ";")[:40]
+        try:
+            self._sp.write(f"V,{trust},{bpm},{ctx},{why}\n".encode("ascii", "replace"))
+        except Exception:
+            pass        # the display is never allowed to interrupt the capture
+
+    def close(self) -> None:
+        self._sp.close()
 
 
 def _parse(parts: list[str]) -> Sample:
@@ -241,23 +264,31 @@ def run(source, save, hop_s, window_s, pb=None) -> None:
             pb.update(w, v, est)
             d = pb.deviation(est, v)
 
+            verdict_out = None
             if d is None:
                 base = pb.snapshot()
                 if not v.scored:
                     # THE moment. No number. Not the last one, not an estimate.
                     reading = f"{RED}  --  no reading  --{RESET}"
                     why = v.reasons[0] if v.reasons else "quality gate refused"
+                    verdict_out = ("unscored", "--", "", why)
                 else:
                     reading = f"{DIM}  -- calibrating --{RESET}"
                     why = f"{base.coverage_s:.0f}/{MIN_COVERAGE_S:.0f}s of clean rest"
+                    verdict_out = (v.ppg.value, "--", "CALIBRATING", why)
                 ctx = sev = ""
             else:
                 reading = f"{BOLD}{d.hr_bpm:5.0f}{RESET} bpm  {d.delta_bpm:+5.0f}  {d.personal_sigma:+5.1f}sd"
                 sc = ss.push(score(d, v.metrics["motion"], pb.gsr_deviation(w)))
                 ctx, why = sc.context.value.upper(), sc.explanation
                 sev = sc.severity.name
+                verdict_out = (v.ppg.value, f"{d.hr_bpm:.0f}",
+                               sc.context.value.upper(), sc.explanation)
                 if sc.severity.value >= Severity.CONCERN.value:
                     ctx = f"{RED}{ctx}{RESET}"
+
+            if verdict_out and hasattr(source, "send_verdict"):
+                source.send_verdict(*verdict_out)
 
             print(f"  {w.t_end_ms/1000:6.1f}s  {BADGE[v.ppg]} {reading:<24} "
                   f"{ctx:<12} {sev:<8} {DIM}{why}{RESET}")
@@ -266,6 +297,8 @@ def run(source, save, hop_s, window_s, pb=None) -> None:
     finally:
         if fh:
             fh.close()
+        if hasattr(source, "close"):
+            source.close()
         print(f"\n{BOLD}{CYAN}{cov.summary()}{RESET}")
         if save:
             print(f"{DIM}saved -> {save}{RESET}")
@@ -306,7 +339,7 @@ def main() -> None:
             save_baseline(pb, a.save_baseline)
 
     if a.serial:
-        source = from_serial(a.serial)
+        source = SerialSource(a.serial)
     elif a.file:
         source = from_file(a.file, realtime=not a.fast)
     else:

@@ -5,6 +5,11 @@ firmware included, is ours.** This was written as a handoff document; it is now
 our own build spec. The content did not need to change — a contract you write
 for someone else is exactly the contract you should hold yourself to.
 
+Serial runs at **230400**, not 115200. A 100 Hz row is ~60 bytes = 6 kB/s,
+which is 52% of a 115200 line, and the verdict return channel shares it. At
+52% utilisation any hiccup drops rows, and a dropped row means the file is not
+100 Hz any more.
+
 Toolchain: **PlatformIO** (`platformio.ini` lives in the repo, so the library
 versions are pinned and the build is reproducible for both of us).
 
