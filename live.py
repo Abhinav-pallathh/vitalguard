@@ -337,6 +337,8 @@ def main() -> None:
                    help="persist the learned baseline for later runs")
     p.add_argument("--bridge", nargs="?", const=8765, type=int, metavar="PORT",
                    help="serve game/ and carry its events onto the device clock")
+    p.add_argument("--camera", metavar="URL",
+                   help="phone stream, e.g. http://192.168.29.164:8080/video")
     p.add_argument("--session", metavar="JSON", default="session.json",
                    help="where --bridge writes events + the clock audit")
     p.add_argument("--hop", type=float, default=DEFAULT_HOP_S)
@@ -368,9 +370,33 @@ def main() -> None:
         br = Bridge(Path(__file__).parent / "game", port=a.bridge).start()
         print(f"{BOLD}bridge{RESET} {CYAN}{br.url}{RESET}  "
               f"{DIM}open the game there, NOT from file://{RESET}\n")
+    cam = None
+    if a.camera:
+        if br is None:
+            print(f"{YELLOW}--camera needs --bridge (the camera is stamped with the "
+                  f"device clock the bridge carries){RESET}")
+            return
+        from vitalguard.camera import CameraRunner
+        cam = CameraRunner(a.camera, str(Path(__file__).parent / "models" /
+                                         "face_detection_yunet_2023mar.onnx"),
+                           stamp=lambda: br.state.device_t_ms,
+                           sink=br.state.record_face).start()
+        br.state.camera = cam
+        print(f"{BOLD}camera{RESET} {CYAN}{a.camera}{RESET}\n")
+
     try:
         run(source, a.save, a.hop, a.window, pb=pb, bridge=br)
     finally:
+        if cam is not None:
+            cam.stop()
+            ff = cam.face_fraction
+            state = (f"{RED}{cam.error}{RESET}" if cam.error
+                     else f"{GREEN}ok{RESET}" if (ff or 0) > 0.8
+                     else f"{YELLOW}face in {(ff or 0)*100:.0f}% of frames{RESET}")
+            print(f"\n{BOLD}camera{RESET} {state}  {DIM}{cam.frames} frames, "
+                  f"rotation {cam.rotation}, {cam.reconnects} reconnects{RESET}")
+            for k, v in br.state.face_summary().items():
+                print(f"  {DIM}{k:<22}{RESET} {'--' if v is None else f'{v:8.3f}'}")
         if br is not None:
             audit = br.save(a.session)
             # The alignment is reported, never assumed. If this says no, the

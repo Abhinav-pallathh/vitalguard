@@ -48,7 +48,39 @@ def test_publish_then_state(bridge):
                          personal_sigma=1.7, gsr_sigma=0.9, hr_bpm=88.0)
     s = get(bridge, "/state")
     assert s == {"device_t_ms": 12_000, "personal_sigma": 1.7, "gsr_sigma": 0.9,
-                 "hr_bpm": 88.0, "trust": "trusted", "calibrated": True, "n_events": 0}
+                 "hr_bpm": 88.0, "trust": "trusted", "calibrated": True,
+                 "n_events": 0, "camera": None}
+
+
+def test_camera_reports_none_when_none_is_attached(bridge):
+    """An absent camera must read as absent, not as a camera seeing nothing."""
+    assert get(bridge, "/state")["camera"] is None
+
+
+def test_camera_state_is_visible_next_to_the_vitals(bridge):
+    """The operator has to see a dead camera during the run, not discover an
+    empty channel in the report afterwards."""
+    class FakeCam:
+        frames, faces, rotation, reconnects, error = 100, 96, 90, 1, None
+        face_fraction = 0.96
+    bridge.state.camera = FakeCam()
+    from vitalguard.camera import FaceObservation
+    bridge.state.record_face(FaceObservation(t_ms=1, present=True))
+    c = get(bridge, "/state")["camera"]
+    assert c["face_fraction"] == 0.96
+    assert c["rotation"] == 90 and c["reconnects"] == 1
+    assert c["face_now"] is True
+
+
+def test_camera_observations_reach_the_summary(bridge):
+    from vitalguard.camera import FaceObservation
+    for i in range(6):
+        bridge.state.record_face(FaceObservation(
+            t_ms=i * 100, present=True, eye_r=(0., 0.), eye_l=(40., 0.),
+            nose=(20., 10.), mouth_r=(10., 30.), mouth_l=(30., 30.), width=60.))
+    s = bridge.state.face_summary()
+    assert s["face_absent_fraction"] == 0.0
+    assert s["mouth_width_ratio"] == pytest.approx(0.5)
 
 
 def test_event_is_stamped_with_the_device_clock(bridge):

@@ -27,6 +27,7 @@ stress" and scores the clock while appearing to score the body.
 """
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass
 from statistics import median
 
@@ -36,7 +37,7 @@ import numpy as np
 # if you cannot write the sentence without naming a feeling, it does not belong.
 METRICS: dict[str, tuple[str, str]] = {
     "head_motion_px_s":     ("px/s", "median landmark travel per second, scaled by face width"),
-    "head_motion_peak":     ("px/s", "largest single-frame landmark travel in the block"),
+    "head_motion_p95":      ("px/s", "95th percentile of per-frame landmark travel"),
     "face_absent_fraction": ("0-1",  "fraction of frames in which no face was found"),
     "turn_fraction":        ("0-1",  "fraction of frames with the nose off-centre between the eyes"),
     "distance_change":      ("0-1",  "spread of face width, as a fraction of its median"),
@@ -59,6 +60,16 @@ METRICS: dict[str, tuple[str, str]] = {
 # "looked away" flag, not a gaze tracker, and it is named turn_fraction for that
 # reason rather than anything that sounds like attention.
 TURN_RATIO = 0.25
+
+# ⚠ THE DEVICE CLOCK IS A STAMP, NOT A FRAME RATE.
+# Camera frames carry the device's t_ms so they can sit on one timeline with
+# physiology. That is the ONLY thing it is for. Deriving frame spacing from it
+# is a different claim, and a wrong one: the clock advances in its own steps, so
+# two frames genuinely 70 ms apart can land 1 ms apart and speed = distance/dt
+# explodes. A real run produced 42,058 px/s from a seated person this way.
+# Anything faster than MIN_DT_S is a stamping artefact, not a movement, and is
+# dropped and counted rather than divided by.
+MIN_DT_S = 0.02          # 50 fps ceiling; no phone stream here beats it
 
 
 @dataclass(frozen=True, slots=True)
@@ -157,13 +168,19 @@ def summarise(obs: list[FaceObservation]) -> dict[str, float | None]:
     speeds: list[float] = []
     for a, b in zip(seen, seen[1:]):
         dt = (b.t_ms - a.t_ms) / 1000.0
-        if dt <= 0 or not a.width:
+        if dt < MIN_DT_S or not a.width:
             continue
         d = float(np.hypot(b.nose[0] - a.nose[0], b.nose[1] - a.nose[1]))
         speeds.append((d / a.width) * 100.0 / dt)
     if speeds:
         out["head_motion_px_s"] = float(median(speeds))
-        out["head_motion_peak"] = float(max(speeds))
+        # p95, not max. One mis-detected frame is enough to make a max
+        # meaningless, and the max is exactly what a reader would quote.
+        # ⚠ p95 only absorbs an outlier when the block is big: at 14 fps a 20 s
+        # block is ~280 frames and one spike is 0.4%, but on a 20-frame block
+        # the 95th percentile IS the top sample. The median above is robust
+        # either way -- quote that from short blocks.
+        out["head_motion_p95"] = float(np.percentile(speeds, 95))
     return out
 
 
@@ -231,3 +248,113 @@ class FaceReader:
             mouth_l=(float(f[12]), float(f[13])),
             width=float(f[2]),
         )
+
+
+class CameraRunner:
+    """Reads the phone in its own thread and hands each frame's geometry away.
+
+    Deliberately knows nothing about the bridge. It is given a `stamp` (what
+    time is it on the DEVICE clock) and a `sink` (where observations go), so the
+    camera never becomes a second source of truth about time -- the same rule
+    the verdict channel follows in firmware.
+
+    ⚠ A dropped stream must not end the run. Phones sleep, WiFi stutters, and
+    the recording it is attached to may be the only one anybody gets that day.
+    Reconnects are counted and reported, never hidden -- a run that silently
+    limped on 3 fps would produce head-motion numbers that are arithmetic
+    rather than measurement.
+    """
+
+    RECONNECT_WAIT_S = 2.0
+    MAX_CONSECUTIVE_FAILS = 45
+
+    def __init__(self, source: str, model_path: str, stamp, sink,
+                 calibrate_n: int = 8) -> None:
+        self.source = source
+        self.model_path = model_path
+        self._stamp = stamp
+        self._sink = sink
+        self._calibrate_n = calibrate_n
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+        # Reported, not hidden.
+        self.frames = 0
+        self.faces = 0
+        self.reconnects = 0
+        self.rotation: int | None = None
+        self.error: str | None = None
+
+    @property
+    def face_fraction(self) -> float | None:
+        return self.faces / self.frames if self.frames else None
+
+    def start(self) -> "CameraRunner":
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+        return self
+
+    def stop(self) -> None:
+        self._stop.set()
+        if self._thread:
+            self._thread.join(timeout=4)
+
+    def _open(self):
+        import cv2
+        cap = cv2.VideoCapture(self.source)
+        # Keep the buffer at one frame: a backlog would hand us stale images and
+        # stamp them with the current device time, which is a silent time lie.
+        try:
+            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        except Exception:
+            pass
+        return cap if cap.isOpened() else None
+
+    def _run(self) -> None:
+        try:
+            reader = FaceReader(self.model_path)
+        except Exception as exc:                      # no model, no cv2
+            self.error = f"{type(exc).__name__}: {exc}"
+            return
+
+        cap = self._open()
+        if cap is None:
+            self.error = f"could not open {self.source}"
+            return
+
+        # Orientation first. A sideways stream finds a face in ~2% of frames and
+        # is indistinguishable from a dead camera downstream.
+        probe = []
+        while len(probe) < self._calibrate_n and not self._stop.is_set():
+            ok, f = cap.read()
+            if ok:
+                probe.append(f)
+        if probe:
+            self.rotation = reader.calibrate(probe)
+        if reader.rotation is None:
+            reader.rotation = 0
+
+        fails = 0
+        while not self._stop.is_set():
+            ok, frame = cap.read()
+            if not ok:
+                fails += 1
+                if fails >= self.MAX_CONSECUTIVE_FAILS:
+                    cap.release()
+                    self._stop.wait(self.RECONNECT_WAIT_S)
+                    cap = self._open()
+                    self.reconnects += 1
+                    fails = 0
+                    if cap is None:
+                        self.error = "stream lost and would not reopen"
+                        return
+                continue
+            fails = 0
+            t = self._stamp()
+            if t is None:
+                # No device time yet. Recording an observation we cannot place
+                # would be a row that looks like evidence and is not.
+                continue
+            obs = reader.observe(frame, t)
+            self.frames += 1
+            self.faces += int(obs.present)
+            self._sink(obs)

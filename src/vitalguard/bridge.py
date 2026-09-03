@@ -36,6 +36,8 @@ from pathlib import Path
 from statistics import median
 
 from .behaviour import BehaviourEvent, Channel, Event
+from .camera import FaceObservation
+from .camera import summarise as summarise_faces
 
 DEFAULT_PORT = 8765
 
@@ -85,6 +87,8 @@ class SharedState:
         self.trust: str = "unscored"
         self.calibrated: bool = False
         self.events: list[StampedEvent] = []
+        self.faces: list[FaceObservation] = []
+        self.camera: object | None = None      # a CameraRunner, when one is attached
 
     # -- written by the pipeline thread ------------------------------------
     def tick(self, device_t_ms: int) -> None:
@@ -124,13 +128,44 @@ class SharedState:
                 "trust": self.trust,
                 "calibrated": self.calibrated,
                 "n_events": len(self.events),
+                "camera": self._camera_state(),
             }
+
+    def _camera_state(self) -> dict | None:
+        """What the camera is actually doing, in the same breath as the vitals.
+
+        Reported on /state so the operator sees a dead camera immediately rather
+        than discovering an empty channel in the report afterwards.
+        """
+        c = self.camera
+        if c is None:
+            return None
+        seen = self.faces[-1] if self.faces else None
+        return {
+            "frames": c.frames, "faces": c.faces,
+            "face_fraction": c.face_fraction,
+            "rotation": c.rotation, "reconnects": c.reconnects,
+            "error": c.error,
+            "face_now": bool(seen.present) if seen is not None else None,
+        }
 
     def record(self, browser_t_ms: int, event: str, channel: str, detail: str = "") -> StampedEvent:
         with self._lock:
             e = StampedEvent(browser_t_ms, self.device_t_ms, event, channel, detail)
             self.events.append(e)
             return e
+
+    def record_face(self, obs: FaceObservation) -> None:
+        """Camera observations arrive ALREADY on the device clock -- the runner
+        is handed the stamp function and refuses to emit without one. Unlike
+        browser events there is no second clock to reconcile here."""
+        with self._lock:
+            self.faces.append(obs)
+
+    def face_summary(self) -> dict:
+        with self._lock:
+            snapshot = list(self.faces)
+        return summarise_faces(snapshot)
 
     def audit(self) -> ClockAudit:
         with self._lock:
@@ -244,6 +279,9 @@ class Bridge:
         a = self.state.audit()
         Path(path).write_text(json.dumps({
             "clock_audit": asdict(a) | {"alignable": a.alignable},
+            "camera": self.state._camera_state(),
+            "camera_summary": self.state.face_summary(),
             "events": [asdict(e) | {"offset_ms": e.offset_ms} for e in self.state.events],
+            "faces": [asdict(f) for f in self.state.faces],
         }, indent=1))
         return a
