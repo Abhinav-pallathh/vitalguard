@@ -122,6 +122,7 @@ static void sampler_task(void *) {
     // last sample. 0 reads as a flatline downstream and the quality gate marks
     // the window UNSCORED -- which is the correct and honest outcome. A
     // repeated sample would instead look like a real, very clean signal.
+    if (has_ppg) ppg.check();                 // poll FIFO first, then read it
     if (has_ppg && ppg.available()) {
       r.ppg_ir  = ppg.getFIFOIR();
       r.ppg_red = ppg.getFIFORed();
@@ -129,7 +130,6 @@ static void sampler_task(void *) {
     } else {
       r.ppg_ir = r.ppg_red = 0;
     }
-    if (has_ppg) ppg.check();
 
     if (has_imu && imu.getEvent(&a, &g, &temp)) {
       r.ax = a.acceleration.x / 9.80665f;   // m/s^2 -> g, schema says g
@@ -332,6 +332,73 @@ static void alarm_if_needed() {
   }
 }
 
+// One second of every channel, printed in plain English BEFORE the CSV header.
+// This exists to answer one question fast: is this sensor dead, or is this wire
+// wrong? A channel that never moves is not reading anything, whatever the I2C
+// scan said -- a device can acknowledge its address and still have an unplugged
+// electrode hanging off it.
+//
+// Printed as human text ahead of the header, so live.py shows it as boot
+// chatter and read_csv never sees it.
+static void self_test() {
+  Serial.println("self-test: 1 s of raw values, watch the SPREAD not the value");
+  uint32_t ir_lo = UINT32_MAX, ir_hi = 0;
+  uint16_t gsr_lo = 4095, gsr_hi = 0, ecg_lo = 4095, ecg_hi = 0;
+  float a_lo = 99, a_hi = -99;
+  int lo_off = 0, n = 0;
+  sensors_event_t a, g, t;
+
+  uint32_t end = millis() + 1000;
+  while (millis() < end) {
+    if (has_ppg) { ppg.check();
+      if (ppg.available()) { uint32_t v = ppg.getFIFOIR();
+        ir_lo = min(ir_lo, v); ir_hi = max(ir_hi, v); ppg.nextSample(); } }
+    if (has_imu && imu.getEvent(&a, &g, &t)) {
+      float m = sqrtf(a.acceleration.x*a.acceleration.x +
+                      a.acceleration.y*a.acceleration.y +
+                      a.acceleration.z*a.acceleration.z) / 9.80665f;
+      a_lo = min(a_lo, m); a_hi = max(a_hi, m);
+    }
+    uint16_t gs = analogRead(PIN_GSR), ec = analogRead(PIN_ECG);
+    gsr_lo = min(gsr_lo, gs); gsr_hi = max(gsr_hi, gs);
+    ecg_lo = min(ecg_lo, ec); ecg_hi = max(ecg_hi, ec);
+    lo_off += (digitalRead(PIN_LO_PLUS) || digitalRead(PIN_LO_MINUS));
+    n++;
+    delay(5);
+  }
+
+  // A flat channel is reported as a PROBLEM, in the words that tell you what to
+  // go and touch. "ppg_ir 0..0" is a fact; "sensor not reading" is an action.
+  if (!has_ppg) Serial.println("  PPG    MISSING       -> check SDA/SCL + 3V3, addr 0x57");
+  else if (ir_hi <= ir_lo + 100)
+    Serial.printf("  PPG    FLAT %lu        -> finger/clip not on the sensor\n",
+                  (unsigned long)ir_hi);
+  else Serial.printf("  PPG    %lu..%lu  ok (a pulse should swing thousands)\n",
+                     (unsigned long)ir_lo, (unsigned long)ir_hi);
+
+  if (!has_imu) Serial.println("  IMU    MISSING       -> check SDA/SCL + 3V3, addr 0x68");
+  else if (a_hi < 0.5f)
+    Serial.println("  IMU    reads ~0 g     -> wrong, gravity alone is 1.0 g. Check wiring.");
+  else Serial.printf("  IMU    %.2f..%.2f g  ok (still = ~1.00)\n", a_lo, a_hi);
+
+  if (gsr_hi <= gsr_lo && (gsr_hi == 0 || gsr_hi >= 4095))
+    Serial.printf("  GSR    STUCK AT %u   -> 0 = not powered/not wired, 4095 = shorted\n", gsr_hi);
+  else Serial.printf("  GSR    %u..%u      ok (fingers on = big change)\n", gsr_lo, gsr_hi);
+
+  if (lo_off == n)
+    Serial.println("  ECG    leads OFF      -> electrodes not on skin (fine if unused)");
+  else if (ecg_hi <= ecg_lo + 5)
+    Serial.printf("  ECG    FLAT %u       -> AD8232 OUTPUT not on GPIO 35?\n", ecg_hi);
+  else Serial.printf("  ECG    %u..%u      ok, leads attached\n", ecg_lo, ecg_hi);
+
+  Serial.printf("  BTN    %s\n", digitalRead(PIN_BTN) == LOW
+                                 ? "reads PRESSED at boot -> wired to 3V3 instead of GND?"
+                                 : "ok (not pressed)");
+  Serial.printf("  SD     %s\n", has_sd ? "card mounted" : "no card -> serial only");
+  digitalWrite(PIN_BUZZER, HIGH); delay(120); digitalWrite(PIN_BUZZER, LOW);
+  Serial.println("  BUZZER just beeped -- if you heard nothing, check GPIO 25 + polarity");
+}
+
 void setup() {
   Serial.begin(SERIAL_BAUD);
   delay(300);
@@ -381,6 +448,11 @@ void setup() {
     has_sd = (bool)logfile;
   }
   if (!has_sd) Serial.println("no SD -- streaming to serial, pipe it to a file");
+
+  // Self-test BEFORE the header. Everything the device says after the header
+  // must be a data row -- live.py locks on at the header and treats every
+  // later line as one, so prose printed afterwards reads as corrupt data.
+  self_test();
 
   // The header, once, at the top of the file. schema.read_csv checks it.
   const char *hdr = "t_ms,ppg_ir,ppg_red,ax,ay,az,gx,gy,gz,"
