@@ -31,3 +31,8 @@ firmware/backup/
 # history was rewritten with git-filter-repo on 2026-09-04 to remove them.
 # Download separately: https://ubicomp.eti.uni-siegen.de/home/datasets/icmi18/
 data/wesad/
+
+# The ambient loop. Kept out of the repo because its licence is unconfirmed and
+# this repo is public. The game handles a missing file gracefully and simply
+# runs silent, so a clone still works -- see game/assets/README.md.
+game/assets/*.ogg
