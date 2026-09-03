@@ -1,0 +1,218 @@
+[
+ {
+  "id": "a1q1",
+  "act": 1,
+  "kind": "general",
+  "seconds": null,
+  "prompt": "You have four matches and one candle. Three matches are damp. How many lights do you get?",
+  "options": [
+   {
+    "key": "A",
+    "text": "One"
+   },
+   {
+    "key": "B",
+    "text": "Three"
+   },
+   {
+    "key": "C",
+    "text": "Four"
+   },
+   {
+    "key": "D",
+    "text": "None"
+   }
+  ],
+  "answer": "A",
+  "rationale": "Only the dry match lights. B counts the damp ones."
+ },
+ {
+  "id": "a1q2",
+  "act": 1,
+  "kind": "general",
+  "seconds": null,
+  "prompt": "A shelf holds six tins. You take away four. How many do you have?",
+  "options": [
+   {
+    "key": "A",
+    "text": "Two"
+   },
+   {
+    "key": "B",
+    "text": "Four"
+   },
+   {
+    "key": "C",
+    "text": "Six"
+   },
+   {
+    "key": "D",
+    "text": "Ten"
+   }
+  ],
+  "answer": "B",
+  "rationale": "You have what you took. A answers what is left."
+ },
+ {
+  "id": "a2q1",
+  "act": 2,
+  "kind": "general",
+  "seconds": 22,
+  "prompt": "Rations last twelve days for four people. Two more arrive. How many days now?",
+  "options": [
+   {
+    "key": "A",
+    "text": "Six days"
+   },
+   {
+    "key": "B",
+    "text": "Eight days"
+   },
+   {
+    "key": "C",
+    "text": "Nine days"
+   },
+   {
+    "key": "D",
+    "text": "Ten days"
+   }
+  ],
+  "answer": "B",
+  "rationale": "48 person-days over six people. A halves for double the people."
+ },
+ {
+  "id": "a2q2",
+  "act": 2,
+  "kind": "career",
+  "seconds": 22,
+  "prompt": "You find a fault in work that shipped last week. Nobody has noticed it yet.",
+  "options": [
+   {
+    "key": "A",
+    "text": "Tell the team today"
+   },
+   {
+    "key": "B",
+    "text": "Fix it quietly first"
+   },
+   {
+    "key": "C",
+    "text": "Log it and wait"
+   },
+   {
+    "key": "D",
+    "text": "Raise it at review"
+   }
+  ],
+  "answer": null,
+  "rationale": "Trades speed, standing, honesty and cover differently."
+ },
+ {
+  "id": "a3q1",
+  "act": 3,
+  "kind": "general",
+  "seconds": 15,
+  "prompt": "Two of three water cans are contaminated. You test one at random. It is clean. Next one?",
+  "options": [
+   {
+    "key": "A",
+    "text": "One in two"
+   },
+   {
+    "key": "B",
+    "text": "One in three"
+   },
+   {
+    "key": "C",
+    "text": "One quarter"
+   },
+   {
+    "key": "D",
+    "text": "Zero"
+   }
+  ],
+  "answer": "D",
+  "rationale": "One clean can existed; you found it. The rest are contaminated."
+ },
+ {
+  "id": "a3q2",
+  "act": 3,
+  "kind": "career",
+  "seconds": 15,
+  "prompt": "An offer arrives that changes your life. Your team ships in three weeks without you.",
+  "options": [
+   {
+    "key": "A",
+    "text": "Take it, leave now"
+   },
+   {
+    "key": "B",
+    "text": "Take it, delay start"
+   },
+   {
+    "key": "C",
+    "text": "Stay through the ship"
+   },
+   {
+    "key": "D",
+    "text": "Decline and say why"
+   }
+  ],
+  "answer": null,
+  "rationale": "Costs money, goodwill, opportunity or the offer itself."
+ },
+ {
+  "id": "a4q1",
+  "act": 4,
+  "kind": "general",
+  "seconds": 9,
+  "prompt": "Next: 2, 6, 12, 20, __ ?",
+  "options": [
+   {
+    "key": "A",
+    "text": "28"
+   },
+   {
+    "key": "B",
+    "text": "30"
+   },
+   {
+    "key": "C",
+    "text": "32"
+   },
+   {
+    "key": "D",
+    "text": "36"
+   }
+  ],
+  "answer": "B",
+  "rationale": "n(n+1). A is the trap for a constant difference of 8."
+ },
+ {
+  "id": "a4q2",
+  "act": 4,
+  "kind": "career",
+  "seconds": 9,
+  "prompt": "Your manager presents your work as theirs, to the people who decide your promotion.",
+  "options": [
+   {
+    "key": "A",
+    "text": "Correct them in the room, now"
+   },
+   {
+    "key": "B",
+    "text": "Raise it with them privately after"
+   },
+   {
+    "key": "C",
+    "text": "Say nothing and build the record"
+   },
+   {
+    "key": "D",
+    "text": "Take it to their manager instead"
+   }
+  ],
+  "answer": null,
+  "rationale": "Trades standing, relationship, time or safety."
+ }
+]

@@ -1,319 +1,491 @@
 <!doctype html>
 <meta charset="utf-8">
-<title>VitalGuard — The Gate</title>
+<title>The Gate</title>
+<!--
+  PART 1 — THE SHELL. Look and feel only. No game logic, no scoring, no events.
+  Zero dependencies: no CDN, no webfonts, no image files. Everything is CSS+SVG,
+  because the venue network is not trustable and this must open from a file:// URL.
+  Press [1] and [2] to switch between the two screens.
+-->
 <style>
-  :root{
-    --board:#1f3b30; --chalk:#eef3ec; --chalk-dim:#8fa89b;
-    --wood:#6b4a2f; --wall:#171a19; --warn:#e8b04b; --bad:#d9604a; --good:#7fc98f;
-  }
-  *{box-sizing:border-box}
-  html,body{height:100%;margin:0}
-  body{
-    background:var(--wall); color:var(--chalk);
-    font:16px/1.5 ui-rounded,"Segoe UI",system-ui,sans-serif;
-    display:grid; place-items:center; overflow:hidden;
-  }
-  /* --- the room ------------------------------------------------------- */
-  #room{
-    position:relative; width:min(96vw,1000px); height:min(88vh,660px);
-    background:
-      radial-gradient(120% 90% at 50% 0%, #23282a 0%, #121514 70%);
-    border-radius:14px; overflow:hidden;
-    transition:transform .55s cubic-bezier(.7,0,.3,1), opacity .35s;
-  }
-  #room.leaving{ transform:translateX(-14%) scale(.97); opacity:0 }
-  #room.entering{ transform:translateX(14%) scale(.97); opacity:0 }
-  .floor{position:absolute;inset:auto 0 0 0;height:26%;
-    background:linear-gradient(#2a2320,#1b1614); border-top:2px solid #3a2f28}
-  /* --- blackboard ----------------------------------------------------- */
-  #board{
-    position:absolute; left:6%; top:9%; width:62%; height:56%;
-    background:var(--board); border:12px solid var(--wood); border-radius:6px;
-    box-shadow:0 18px 40px #0009, inset 0 0 90px #0b1a15;
-    padding:22px 26px; display:flex; flex-direction:column; gap:12px;
-  }
-  #board::after{content:"";position:absolute;inset:0;pointer-events:none;
-    background:radial-gradient(60% 40% at 30% 20%,#ffffff0a,transparent 70%)}
-  #qnum{font-size:13px;letter-spacing:.18em;text-transform:uppercase;color:var(--chalk-dim)}
-  #qtext{font-size:clamp(18px,2.4vw,28px); font-weight:600; text-wrap:balance}
-  #qimg{max-height:38%; align-self:center; filter:invert(1) opacity(.85); display:none}
-  #answer{
-    margin-top:auto; width:100%; background:#0000; border:0; border-bottom:2px dashed var(--chalk-dim);
-    color:var(--chalk); font:inherit; font-size:22px; padding:6px 2px; outline:none;
-  }
-  #answer::placeholder{color:#ffffff33}
-  /* --- timer: chalk bar ----------------------------------------------- */
-  #timerwrap{position:absolute; right:6%; top:9%; width:22%;}
-  #clock{font-size:44px;font-variant-numeric:tabular-nums;text-align:center}
-  #bar{height:10px;background:#ffffff1a;border-radius:99px;overflow:hidden;margin-top:8px}
-  #barfill{height:100%;width:100%;background:var(--good);transition:width .2s linear}
-  #score{margin-top:18px;text-align:center;color:var(--chalk-dim);font-size:14px}
-  #score b{color:var(--chalk);font-size:26px;display:block}
-  /* --- character + door ------------------------------------------------ */
-  #guy{position:absolute; bottom:16%; left:12%; width:54px; transition:left 1.5s ease-in-out}
-  #guy.walking .leg{animation:step .38s infinite alternate}
-  #guy.walking .leg2{animation-delay:.19s}
-  @keyframes step{from{transform:rotate(-16deg)}to{transform:rotate(16deg)}}
-  #door{position:absolute; bottom:16%; right:7%; width:96px; height:170px;
-    background:linear-gradient(#4b3423,#332215); border:3px solid #7a5638;
-    border-radius:6px 6px 0 0; box-shadow:inset 0 0 30px #0008;
-    transition:opacity .5s, transform .6s; transform-origin:left center}
-  #door.open{transform:perspective(600px) rotateY(-72deg); opacity:.35}
-  #door .knob{position:absolute;right:12px;top:50%;width:10px;height:10px;border-radius:50%;background:var(--warn)}
-  /* --- overlays -------------------------------------------------------- */
-  .overlay{position:absolute;inset:0;background:#0b0e0dee;display:grid;place-items:center;
-    text-align:center;padding:40px;gap:14px;grid-auto-flow:row;align-content:center}
-  .overlay h1{margin:0;font-size:clamp(22px,3.4vw,38px)}
-  .overlay p{margin:0;max-width:52ch;color:var(--chalk-dim)}
-  .hidden{display:none!important}
-  kbd{background:#ffffff1a;border-radius:4px;padding:2px 7px;font:inherit;font-size:14px}
-  #gatebar{width:min(420px,70vw);height:26px;background:#ffffff14;border-radius:99px;overflow:hidden;
-    border:1px solid #ffffff22}
-  #gatefill{height:100%;width:100%;background:linear-gradient(90deg,var(--good),var(--warn),var(--bad));
-    transition:width .3s ease}
-  #gatenote{font-size:14px;color:var(--chalk-dim)}
-  #flash{position:absolute;inset:0;pointer-events:none;background:var(--bad);opacity:0;transition:opacity .18s}
-  #flash.hit{opacity:.22}
+:root{
+  --ink:#060505;        /* the dark you never fully escape */
+  --soot:#0e0d0c;
+  --ash:#948d81;        /* body text */
+  --bone:#c6bfb1;       /* the thing you're meant to read */
+  --dust:#565046;       /* muted, secondary */
+  --rust:#6b3626;       /* the only chromatic accent */
+  --ember:#c07f3c;      /* candle */
+  --line:#211e1a;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  background:var(--ink);
+  color:var(--ash);
+  font:400 15px/1.65 "Courier New",Courier,monospace;
+  overflow:hidden;
+  -webkit-font-smoothing:antialiased;
+}
+
+/* ---- the world behind everything ------------------------------------- */
+#world{position:fixed;inset:0;z-index:0}
+#world svg{width:100%;height:100%;display:block}
+
+/* Vignette: one light source, everything else gives up at the edges. */
+/* Content scrim: the room stays visible, but never competes with a sentence. */
+#scrim{
+  position:fixed;inset:0;z-index:2;pointer-events:none;
+  background:linear-gradient(100deg,rgba(6,5,5,.9) 0%,rgba(6,5,5,.84) 42%,rgba(6,5,5,.52) 68%,rgba(6,5,5,.34) 100%);
+}
+#vignette{
+  position:fixed;inset:0;z-index:3;pointer-events:none;
+  background:
+    radial-gradient(112% 88% at 60% 36%, transparent 0%, transparent 14%, rgba(6,5,5,.72) 44%, rgba(6,5,5,.985) 88%),
+    radial-gradient(46% 34% at 64% 30%, rgba(192,127,60,.03) 0%, transparent 72%);
+}
+/* Film grain, generated not downloaded. */
+#grain{
+  position:fixed;inset:-50%;z-index:4;pointer-events:none;opacity:.27;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.92' numOctaves='3'/><feColorMatrix type='saturate' values='0'/></filter><rect width='180' height='180' filter='url(%23n)' opacity='.55'/></svg>");
+  animation:drift .42s steps(2) infinite;
+}
+@keyframes drift{
+  0%{transform:translate(0,0)} 33%{transform:translate(-2%,1.5%)} 66%{transform:translate(1.5%,-1%)} 100%{transform:translate(0,0)}
+}
+/* The candle is not steady, so neither is the room. */
+#flicker{
+  position:fixed;inset:0;z-index:5;pointer-events:none;
+  background:rgba(192,127,60,.032);mix-blend-mode:screen;
+  animation:gutter 7.3s linear infinite;
+}
+@keyframes gutter{
+  0%{opacity:.5}   9%{opacity:.86}  13%{opacity:.22} 17%{opacity:.7}
+  31%{opacity:.44} 38%{opacity:.9}  41%{opacity:.16} 46%{opacity:.62}
+  59%{opacity:.5}  67%{opacity:.08} 71%{opacity:.55} 84%{opacity:.78}
+  91%{opacity:.3}  100%{opacity:.5}
+}
+/* A second, slower pass: the whole room loses confidence every few seconds. */
+#dark{position:fixed;inset:0;z-index:5;pointer-events:none;
+  background:#060505;opacity:0;animation:swell 11s ease-in-out infinite}
+@keyframes swell{0%,100%{opacity:0}44%{opacity:.30}52%{opacity:.06}}
+/* Dust, hanging in the one shaft of light. */
+.mote{position:fixed;z-index:4;width:2px;height:2px;border-radius:50%;
+  background:rgba(198,191,177,.5);pointer-events:none;filter:blur(.4px)}
+@keyframes fall{
+  from{transform:translate3d(0,-8vh,0);opacity:0}
+  12%{opacity:.55} 88%{opacity:.4}
+  to{transform:translate3d(-3vw,86vh,0);opacity:0}
+}
+
+/* ---- screens ---------------------------------------------------------- */
+.screen{
+  position:fixed;inset:0;z-index:6;
+  display:flex;align-items:center;justify-content:center;
+  padding:6vh 6vw;
+}
+.screen[hidden]{display:none}
+
+/* ---- 1. title --------------------------------------------------------- */
+#title .plate{max-width:620px;text-align:left}
+.mark{
+  font-size:11px;letter-spacing:.42em;text-transform:uppercase;
+  color:var(--dust);margin-bottom:34px;
+}
+h1{
+  font:400 clamp(48px,9vw,104px)/.92 "Courier New",Courier,monospace;
+  letter-spacing:-.02em;text-transform:uppercase;color:var(--bone);
+  text-shadow:0 0 60px rgba(6,5,5,.9);
+  margin-bottom:26px;
+}
+h1 em{font-style:normal;display:block;color:var(--dust);font-size:.42em;letter-spacing:.24em;margin-top:16px}
+.rule{height:1px;background:linear-gradient(90deg,var(--rust),transparent);margin:0 0 26px}
+#title p{max-width:47ch;color:var(--ash);margin-bottom:14px}
+#title p.cold{color:var(--dust)}
+.prompt-key{
+  margin-top:42px;font-size:12px;letter-spacing:.3em;text-transform:uppercase;
+  color:var(--dust);animation:pulse 2.6s ease-in-out infinite;
+}
+@keyframes pulse{0%,100%{opacity:.35}50%{opacity:1}}
+
+/* ---- 2. question ------------------------------------------------------ */
+#question{align-items:stretch;flex-direction:column;justify-content:center}
+.hud{
+  position:fixed;top:0;left:0;right:0;padding:22px 6vw;
+  display:flex;align-items:center;gap:22px;
+  font-size:11px;letter-spacing:.3em;text-transform:uppercase;color:var(--dust);
+  z-index:7;
+}
+.hud .act{color:var(--ash)}
+.hud .sep{flex:1;height:1px;background:var(--line)}
+
+/* The timer is a candle. It is the most honest clock we have. */
+.candle{position:fixed;top:52px;right:6vw;z-index:7;width:26px;height:130px;
+  display:flex;flex-direction:column;align-items:center;justify-content:flex-end}
+.flame{
+  width:7px;height:15px;margin-bottom:2px;border-radius:50% 50% 46% 46%;
+  background:radial-gradient(ellipse at 50% 78%,#ffe6b0 0%,var(--ember) 44%,rgba(125,64,41,0) 78%);
+  filter:blur(.4px);animation:lick .28s ease-in-out infinite alternate;
+  box-shadow:0 0 22px 7px rgba(217,146,74,.22);
+}
+@keyframes lick{from{transform:translateX(-.6px) scaleY(.9)}to{transform:translateX(.6px) scaleY(1.12)}}
+.wax{width:11px;background:linear-gradient(180deg,#cfc6b2,#6b6357);height:64px;
+  border-radius:2px 2px 0 0;transition:height 1s linear}
+
+.card{width:min(760px,100%);margin:0 auto;padding-left:2vw}
+.kind{
+  font-size:10px;letter-spacing:.36em;text-transform:uppercase;
+  color:var(--rust);margin-bottom:18px;
+}
+.q{
+  font:400 clamp(21px,3.1vw,32px)/1.42 "Courier New",Courier,monospace;
+  color:var(--bone);margin-bottom:42px;max-width:26ch;
+}
+.options{display:grid;gap:11px}
+.opt{
+  display:flex;align-items:center;gap:20px;
+  padding:17px 22px;
+  border:1px solid var(--line);
+  background:rgba(20,18,16,.55);
+  color:var(--ash);cursor:pointer;
+  transition:border-color .16s,background .16s,color .16s,transform .16s;
+}
+.opt:hover{
+  border-color:var(--rust);
+  background:rgba(125,64,41,.11);
+  color:var(--bone);
+  transform:translateX(5px);
+}
+.opt .key{
+  flex:none;width:27px;height:27px;
+  display:grid;place-items:center;
+  border:1px solid var(--line);
+  font-size:12px;color:var(--dust);
+}
+.opt:hover .key{border-color:var(--rust);color:var(--ember)}
+.opt .text{font-size:15px}
+.foot{
+  position:fixed;bottom:0;left:0;right:0;padding:22px 6vw;
+  font-size:10px;letter-spacing:.28em;text-transform:uppercase;color:var(--dust);opacity:.62;
+  display:flex;justify-content:space-between;z-index:7;
+}
+
+  .opt.sel{border-color:var(--ember);background:rgba(192,127,60,.14);color:var(--bone);transform:translateX(5px)}
+  .opt.sel .key{border-color:var(--ember);color:var(--ember)}
+  .meter{position:relative;height:5px;background:var(--line);margin:30px 0 14px;max-width:520px}
+  .meter .fill{height:100%;background:linear-gradient(90deg,var(--rust),var(--ember));width:0;transition:width .4s linear}
+  .meter .mark{position:absolute;top:-6px;width:1px;height:17px;background:var(--bone);opacity:.85}
+  .readout{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--dust)}
 </style>
 
-<div id="room">
-  <div class="floor"></div>
+<!-- The room. Drawn, not photographed — every line is displaced by noise so it
+     reads as charcoal rather than vector. -->
+<div id="world">
+<svg viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <filter id="rough" x="-12%" y="-12%" width="124%" height="124%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.041" numOctaves="4" seed="19" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="11" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+    <pattern id="hatch" width="7" height="7" patternTransform="rotate(38)" patternUnits="userSpaceOnUse">
+      <line x1="0" y1="0" x2="0" y2="7" stroke="#1c1916" stroke-width="2.2"/>
+    </pattern>
+    <radialGradient id="shaft" cx="50%" cy="20%" r="70%">
+      <stop offset="0%" stop-color="#aeb4b0" stop-opacity=".15"/>
+      <stop offset="100%" stop-color="#b9b7a6" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="wall" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#100e0c"/><stop offset="100%" stop-color="#070605"/>
+    </linearGradient>
+  </defs>
 
-  <div id="board">
-    <div id="qnum">Room 1 · Practice</div>
-    <div id="qtext">—</div>
-    <img id="qimg" alt="">
-    <input id="answer" autocomplete="off" spellcheck="false" placeholder="type your answer, then Enter">
-  </div>
+  <rect width="1600" height="900" fill="url(#wall)"/>
+  <rect width="1600" height="900" fill="url(#hatch)" opacity=".62"/>
 
-  <div id="timerwrap">
-    <div id="clock">--</div>
-    <div id="bar"><div id="barfill"></div></div>
-    <div id="score">score<b id="scoreval">0</b></div>
-  </div>
+  <g filter="url(#rough)" stroke="#4d4740" fill="none" stroke-linecap="round">
+    <!-- boarded window, the only source of light -->
+    <rect x="880" y="120" width="330" height="300" stroke-width="3" fill="#080706"/>
+    <g stroke="#4a443a" stroke-width="9">
+      <line x1="862" y1="196" x2="1228" y2="230"/>
+      <line x1="866" y1="300" x2="1226" y2="272"/>
+      <line x1="874" y1="384" x2="1222" y2="366"/>
+    </g>
+    <g stroke="#8a7a5e" stroke-width="2" opacity=".5">
+      <line x1="900" y1="150" x2="900" y2="400"/>
+      <line x1="1045" y1="140" x2="1045" y2="404"/>
+      <line x1="1190" y1="146" x2="1190" y2="398"/>
+    </g>
+    <!-- floor + wall break -->
+    <line x1="0" y1="690" x2="1600" y2="672" stroke-width="3"/>
+    <line x1="1290" y1="0" x2="1306" y2="690" stroke-width="2.5" opacity=".7"/>
+    <!-- table, foreground left -->
+    <path d="M120 640 L560 632 L590 660 L96 668 Z" stroke-width="3.5" stroke="#5c554b" fill="#0a0908"/>
+    <line x1="160" y1="666" x2="176" y2="820" stroke-width="4" stroke="#5c554b"/>
+    <line x1="546" y1="660" x2="530" y2="812" stroke-width="4" stroke="#5c554b"/>
+    <!-- the figure: seated, shoulders, head. Never a face. -->
+    <path d="M250 632 q10 -96 78 -100 q70 4 78 100" stroke-width="4" stroke="#6a6357" fill="#040403"/>
+    <circle cx="328" cy="498" r="41" stroke-width="4" stroke="#6a6357" fill="#040403"/>
+    <!-- cracks: the building is not holding -->
+    <g stroke="#221f1b" stroke-width="2" opacity=".8">
+      <path d="M60 40 l38 128 l-22 74 l46 96"/>
+      <path d="M98 168 l-58 52"/>
+      <path d="M1318 60 l-30 152 l26 88"/>
+      <path d="M470 0 l22 104 l-34 62"/>
+    </g>
+    <!-- debris on the floor -->
+    <g stroke="#2a2622" stroke-width="2.5" opacity=".85">
+      <path d="M840 700 l40 -12 l30 16 l-44 12 z"/>
+      <path d="M960 726 l58 -8 l16 14 l-62 10 z"/>
+      <path d="M1140 690 l26 -10 l22 12 l-30 12 z"/>
+      <line x1="620" y1="712" x2="700" y2="704"/>
+      <line x1="1210" y1="722" x2="1280" y2="712"/>
+    </g>
+    <!-- crates -->
+    <rect x="672" y="560" width="118" height="126" stroke-width="2.5" fill="#0d0c0a"/>
+    <line x1="672" y1="606" x2="790" y2="606" stroke-width="2"/>
+    <rect x="700" y="470" width="86" height="90" stroke-width="2.5" fill="#0d0c0a"/>
+    <!-- the door, far right. It is closed. -->
+    <rect x="1370" y="300" width="176" height="390" stroke-width="3.5" fill="#080706"/>
+    <circle cx="1400" cy="500" r="7" stroke-width="3"/>
+  </g>
 
-  <svg id="guy" viewBox="0 0 40 80" fill="none" stroke="#eef3ec" stroke-width="3.4" stroke-linecap="round">
-    <circle cx="20" cy="11" r="8" fill="#eef3ec" stroke="none"/>
-    <line x1="20" y1="19" x2="20" y2="46"/>
-    <line x1="20" y1="26" x2="7"  y2="38"/>
-    <line x1="20" y1="26" x2="33" y2="38"/>
-    <line class="leg"  x1="20" y1="46" x2="11" y2="72" style="transform-origin:20px 46px"/>
-    <line class="leg2 leg" x1="20" y1="46" x2="29" y2="72" style="transform-origin:20px 46px"/>
-  </svg>
-
-  <div id="door"><div class="knob"></div></div>
-  <div id="flash"></div>
-
-  <!-- gate between rooms -->
-  <div id="gate" class="overlay hidden">
-    <h1>The door is locked.</h1>
-    <p id="gatetext">It opens when you settle. Breathe out slowly — longer than you breathe in.</p>
-    <div id="gatebar"><div id="gatefill"></div></div>
-    <div id="gatenote">arousal, in units of your own baseline</div>
-    <p style="font-size:13px">stand-in for the real sensor: hold <kbd>Space</kbd> to calm down</p>
-  </div>
-
-  <!-- start / end -->
-  <div id="intro" class="overlay">
-    <h1>The Gate</h1>
-    <p>Four rooms. The blackboard asks, the clock runs, and the door between rooms
-       only opens when your body settles. First room is practice — untimed, unscored.
-       That round is how the machine learns your normal.</p>
-    <p><kbd>Enter</kbd> to begin</p>
-  </div>
-
-  <div id="done" class="overlay hidden">
-    <h1>Out.</h1>
-    <p id="donetext"></p>
-    <p style="font-size:13px"><kbd>E</kbd> download the behaviour log · <kbd>R</kbd> again</p>
-  </div>
+  <!-- light falling in through the boards -->
+  <g opacity=".85">
+    <polygon points="900,150 1190,146 1420,760 700,790" fill="url(#shaft)"/>
+    <polygon points="906,152 1046,150 1180,770 800,782" fill="url(#shaft)" opacity=".6"/>
+  </g>
+</svg>
 </div>
 
+<div id="scrim"></div>
+<div id="dark"></div>
+<div id="vignette"></div>
+<div id="grain"></div>
+<div id="flicker"></div>
+
+<!-- ---------------- SCREEN 1 : TITLE ---------------- -->
+<section class="screen" id="title">
+  <div class="plate">
+    <div class="mark">Recursion&nbsp;&nbsp;·&nbsp;&nbsp;Team BioForge</div>
+    <h1>The Gate<em>a test you cannot study for</em></h1>
+    <div class="rule"></div>
+    <p>Some questions have an answer. Some do not.</p>
+    <p>The band on your wrist is not scoring what you choose. It is watching what your
+       body does while you decide, and how long it takes you to come back down.</p>
+    <p class="cold">The door at the end opens when you are calm. Not when you are fast.</p>
+    <div class="prompt-key" id="startkey">Press Enter to begin</div>
+  </div>
+</section>
+
+<!-- ---------------- SCREEN 2 : QUESTION ---------------- -->
+<section class="screen" id="question" hidden>
+  <div class="hud">
+    <span class="act" id="actlabel">Act I</span><span id="qcount">—</span><span class="sep"></span>
+  </div>
+  <div class="candle"><div class="flame"></div><div class="wax" id="wax" style="height:64px"></div></div>
+  <div class="card">
+    <div class="kind" id="kind">Practice · not scored</div>
+    <div class="q" id="qtext">…</div>
+    <div class="options" id="opts"></div>
+  </div>
+  <div class="foot"><span id="hint">Choose with A · B · C · D</span><span>You cannot go back</span></div>
+</section>
+
+<!-- ---------------- SCREEN 3 : THE GATE ---------------- -->
+<section class="screen" id="gate" hidden>
+  <div class="card" style="text-align:left">
+    <div class="kind">The door</div>
+    <div class="q" id="gatetext">It does not open on demand. It opens when you settle.</div>
+    <div class="meter"><div class="fill" id="gatefill"></div><div class="mark" id="gatemark"></div></div>
+    <div class="readout" id="readout">waiting for the band…</div>
+  </div>
+</section>
+
+<!-- ---------------- SCREEN 4 : DONE ---------------- -->
+<section class="screen" id="done" hidden>
+  <div class="plate">
+    <div class="mark">Session complete</div>
+    <h1 style="font-size:clamp(34px,6vw,64px)">You are through<em id="donesub"></em></h1>
+    <div class="rule"></div>
+    <p id="donetext"></p>
+    <p class="cold" id="donealign"></p>
+    <div class="prompt-key">E to export the behaviour log&nbsp;&nbsp;·&nbsp;&nbsp;R to run again</div>
+  </div>
+</section>
+
+<audio id="amb" src="assets/ambient.ogg" loop preload="auto"></audio>
 <script>
-// ---------------------------------------------------------------------------
-// Rooms are DATA. Adding a level is a line here, never new code.
-// `gate` is the door threshold for the room that FOLLOWS: lower = must be calmer.
-// ---------------------------------------------------------------------------
-const ROOMS = [
-  { practice:true, seconds:null, gate:null, questions:[
-      {q:"What is 7 + 8?", a:"15"},
-      {q:"Which is heavier: 1kg of iron or 1kg of feathers?", a:"same", accept:["equal","neither","same weight"]},
-      {q:"How many sides does a hexagon have?", a:"6", accept:["six"]},
-      {q:"What comes next: 2, 4, 6, __ ?", a:"8", accept:["eight"]},
-  ]},
-  { seconds:20, gate:1.8, questions:[
-      {q:"A train leaves at 14:45 and arrives at 17:20. How many minutes is the journey?", a:"155"},
-      {q:"What is 15% of 240?", a:"36"},
-      {q:"Next in sequence: 3, 6, 11, 18, __ ?", a:"27"},
-  ]},
-  { seconds:14, gate:1.2, questions:[
-      {q:"A shirt costs ₹800 after a 20% discount. What was the original price?", a:"1000"},
-      {q:"If 5 machines make 5 widgets in 5 minutes, how long for 100 machines to make 100 widgets?", a:"5", accept:["5 minutes","five"]},
-      {q:"What is 17 × 23?", a:"391"},
-  ]},
-  { seconds:9,  gate:0.8, questions:[
-      {q:"Next: 1, 1, 2, 3, 5, 8, __ ?", a:"13"},
-      {q:"A clock shows 3:15. What is the angle between the hands, in degrees?", a:"7.5", accept:["7.5 degrees"]},
-      {q:"What is 144 ÷ 0.25?", a:"576"},
-  ]},
-];
+for (let i=0;i<14;i++){
+  const m=document.createElement("div"); m.className="mote";
+  m.style.left=(46+Math.random()*32)+"vw";
+  m.style.animation=`fall ${16+Math.random()*22}s linear ${-Math.random()*30}s infinite`;
+  document.body.appendChild(m);
+}
+const amb=document.getElementById("amb"); amb.volume=0;
+function startAudio(){
+  if(!amb.paused) return;
+  amb.play().then(()=>{ let v=0; const f=setInterval(()=>{
+    v=Math.min(.62,v+.02); amb.volume=v; if(v>=.62) clearInterval(f); },90);
+  }).catch(()=>{});
+}
 
-// --- behaviour event log ---------------------------------------------------
-// Vocabulary MUST match src/vitalguard/behaviour.py exactly. If these strings
-// drift, summarise() silently sees an empty block and reports nothing.
-const EV = { SHOWN:"question_shown", KEY:"keydown", BACK:"backspace",
-             COMMIT:"answer_committed", CHANGE:"answer_changed",
-             BLUR:"focus_lost", FOCUS:"focus_regained" };
-const log = [];
-const T0 = performance.now();
-// NOTE: this clock is the browser's, not the device's millis(). Before the two
-// channels can share a timeline, the test must stamp one sync marker against a
-// device row. Until then behaviour is self-consistent but not alignable.
-const now = () => Math.round(performance.now() - T0);
-function emit(event, detail=""){ log.push({t_ms:now(), event, channel:"input", detail}); }
-
-// --- state -----------------------------------------------------------------
-let ri=0, qi=0, score=0, tick=null, remaining=0, committedOnce=new Set();
 const $ = s => document.querySelector(s);
-const room=$("#room"), guy=$("#guy"), door=$("#door"), ans=$("#answer");
+const screens=["title","question","gate","done"];
+function show(id){ screens.forEach(s => $("#"+s).hidden = (s!==id)); }
 
-// Only keys typed INTO the answer field become behaviour events. Global
-// keypresses (Enter to advance, Space at the gate) must never land in the
-// typing-rhythm stream -- they would be summarised as the player's typing.
-ans.addEventListener("keydown", e => {
-  if (e.key === "Backspace") emit(EV.BACK);
-  else if (e.key.length === 1) emit(EV.KEY);
-});
-addEventListener("blur", () => emit(EV.BLUR));
-addEventListener("focus", () => emit(EV.FOCUS));
+/* ---------------------------------------------------------------------------
+   BEHAVIOUR EVENTS
+   One POST per event, the instant it happens -- never batched. The bridge
+   stamps the device clock on arrival, so arrival time IS event time; buffering
+   would silently add the batch interval to every alignment. bridge.py's audit
+   is built to catch that, and this queue exists so it never has to.
+   Vocabulary must match src/vitalguard/behaviour.py exactly.
+--------------------------------------------------------------------------- */
+const EV={SHOWN:"question_shown",KEY:"keydown",BACK:"backspace",
+          COMMIT:"answer_committed",CHANGE:"answer_changed",
+          BLUR:"focus_lost",FOCUS:"focus_regained"};
+const log=[]; const T0=performance.now();
+let bridgeUp=false, chain=Promise.resolve();
+const now=()=>Math.round(performance.now()-T0);
+function emit(event,detail=""){
+  const e={t_ms:now(),event,channel:"input",detail};
+  log.push(e);
+  chain = chain.then(()=>fetch("/event",{method:"POST",body:JSON.stringify(e)})
+    .then(r=>{bridgeUp=true;return r.json();}).catch(()=>{bridgeUp=false;}));
+}
+addEventListener("blur",()=>{ if(!$("#question").hidden) emit(EV.BLUR); });
+addEventListener("focus",()=>{ if(!$("#question").hidden) emit(EV.FOCUS); });
 
-function norm(s){ return String(s).trim().toLowerCase().replace(/\s+/g," "); }
-function correct(qo, given){
-  const ok = [qo.a, ...(qo.accept||[])].map(norm);
-  return ok.includes(norm(given));
+/* --- questions ---------------------------------------------------------- */
+let QS=[], i=0, selected=null, tick=null, deadline=0, dur=0;
+const ACT=["","Act I","Act II","Act III","Act IV"];
+
+fetch("questions.json").then(r=>r.json()).then(q=>{ QS=q; $("#startkey").textContent="Press Enter to begin"; })
+  .catch(()=>{ $("#startkey").textContent="questions.json missing — serve this over the bridge, not file://"; });
+
+function render(){
+  const q=QS[i];
+  $("#actlabel").textContent=ACT[q.act]||("Act "+q.act);
+  $("#qcount").textContent=`Question ${i+1} of ${QS.length}`;
+  $("#kind").textContent = q.act===1 ? "Practice · not scored"
+                        : q.kind==="career" ? "No correct answer" : "One answer is right";
+  $("#qtext").textContent=q.prompt;
+  const box=$("#opts"); box.textContent="";
+  q.options.forEach(o=>{
+    const d=document.createElement("div"); d.className="opt"; d.dataset.key=o.key;
+    d.innerHTML=`<span class="key"></span><span class="text"></span>`;
+    d.querySelector(".key").textContent=o.key;
+    d.querySelector(".text").textContent=o.text;
+    d.onclick=()=>pick(o.key);
+    box.appendChild(d);
+  });
+  selected=null;
+  $("#hint").textContent="Choose with A · B · C · D";
+  emit(EV.SHOWN,q.id);
+  show("question");
+  startClock(q.seconds);
 }
 
-function showQuestion(){
-  const R = ROOMS[ri], Q = R.questions[qi];
-  $("#qnum").textContent = R.practice
-    ? `Room 1 · Practice · ${qi+1}/${R.questions.length}`
-    : `Room ${ri+1} · ${qi+1}/${R.questions.length}`;
-  $("#qtext").textContent = Q.q;
-  const img=$("#qimg");
-  if (Q.img){ img.src=Q.img; img.style.display="block"; } else img.style.display="none";
-  ans.value=""; ans.focus();
-  emit(EV.SHOWN, `r${ri}q${qi}`);
-  if (R.seconds) startClock(R.seconds); else stopClock();
-}
-
+/* The candle IS the clock. Wax height is remaining time -- no numbers, so the
+   pressure is felt rather than read. */
 function startClock(sec){
-  stopClock(); remaining = sec*1000;
-  $("#clock").textContent = sec.toFixed(0);
-  tick = setInterval(() => {
-    remaining -= 100;
-    const frac = Math.max(0, remaining) / (sec*1000);
-    $("#barfill").style.width = (frac*100)+"%";
-    $("#barfill").style.background = frac>.5 ? "var(--good)" : frac>.25 ? "var(--warn)" : "var(--bad)";
-    $("#clock").textContent = Math.max(0, remaining/1000).toFixed(1);
-    if (remaining <= 0){ stopClock(); judge(null); }
-  }, 100);
-}
-function stopClock(){ if(tick) clearInterval(tick); tick=null;
-  $("#clock").textContent="--"; $("#barfill").style.width="100%"; }
-
-function judge(given){
-  const R = ROOMS[ri], Q = R.questions[qi];
   stopClock();
-  if (given !== null) emit(EV.COMMIT, `r${ri}q${qi}`);
-  const ok = given !== null && correct(Q, given);
-  if (!R.practice){
-    // Loss aversion: a falling score generates more arousal than a rising one.
-    score += ok ? 100 : -60;
-    $("#scoreval").textContent = score;
-    if (!ok){ $("#flash").classList.add("hit"); setTimeout(()=>$("#flash").classList.remove("hit"),180); }
-  }
-  qi++;
-  if (qi < R.questions.length) showQuestion(); else endRoom();
+  const wax=$("#wax");
+  if(!sec){ wax.style.height="64px"; return; }
+  dur=sec*1000; deadline=performance.now()+dur;
+  tick=setInterval(()=>{
+    const left=Math.max(0,deadline-performance.now());
+    wax.style.height=(6+58*(left/dur)).toFixed(1)+"px";
+    if(left<=0){ stopClock(); commit(true); }
+  },100);
+}
+function stopClock(){ if(tick) clearInterval(tick); tick=null; }
+
+/* Two-step commit: select, then confirm. The gap between them is the decision,
+   and a change of mind inside it is answer_changed -- the switching signal that
+   replaced typing corrections when this became multiple choice. */
+function pick(k){
+  emit(EV.KEY,k);
+  if(selected!==null && selected!==k) emit(EV.CHANGE,`${selected}->${k}`);
+  selected=k;
+  document.querySelectorAll(".opt").forEach(o=>o.classList.toggle("sel",o.dataset.key===k));
+  $("#hint").textContent="Enter to commit · you cannot go back";
+}
+function commit(timedOut=false){
+  if(!timedOut && selected===null) return;
+  stopClock();
+  emit(EV.COMMIT, timedOut ? `${QS[i].id}:none:timeout` : `${QS[i].id}:${selected}`);
+  const lastOfAct = i+1>=QS.length || QS[i+1].act!==QS[i].act;
+  i++;
+  if(i>=QS.length) return finish();
+  if(lastOfAct) return runGate(); 
+  render();
 }
 
-ans.addEventListener("keydown", e => {
-  if (e.key !== "Enter") return;
-  const key = `${ri}:${qi}`;
-  if (committedOnce.has(key)) emit(EV.CHANGE, key);
-  committedOnce.add(key);
-  judge(ans.value);
-});
-
-// --- the door = the calm gate ---------------------------------------------
-// Real version reads personal_sigma from the physiology pipeline. Stand-in:
-// holding Space lets arousal fall, so the loop can be felt before wiring it.
-let arousal = 3.0, gateTimer=null, gateDeadline=0, holding=false;
-addEventListener("keydown", e => { if(e.code==="Space"){ holding=true; e.preventDefault(); }});
-addEventListener("keyup",   e => { if(e.code==="Space") holding=false; });
-
-function runGate(threshold, done){
-  $("#gate").classList.remove("hidden");
-  arousal = 2.6 + Math.random()*0.8;
-  gateDeadline = performance.now() + 45000;   // never trap anyone. 45s, then open.
-  gateTimer = setInterval(() => {
-    arousal += holding ? -0.055 : 0.022 + Math.random()*0.01;
-    arousal = Math.max(0, arousal);
-    $("#gatefill").style.width = Math.min(100, (arousal/3.5)*100) + "%";
-    const timedOut = performance.now() > gateDeadline;
-    if (arousal <= threshold || timedOut){
-      clearInterval(gateTimer);
-      $("#gatetext").textContent = timedOut
-        ? "Door opened on time, not on you. That's data too."
-        : "You settled. The door gives.";
-      setTimeout(() => { $("#gate").classList.add("hidden"); done(); }, 1100);
+/* --- the gate ------------------------------------------------------------
+   Arousal is the wearer's own personal_sigma, polled from the bridge. If the
+   band is not there the door still opens on the timeout -- a person stuck on
+   stage unable to calm down in front of judges is the worst outcome available,
+   so the door never traps anyone, and says so.
+------------------------------------------------------------------------- */
+const THRESH={2:1.8,3:1.2,4:0.8};
+function runGate(){
+  show("gate");
+  const need=THRESH[QS[i].act] ?? 1.2;
+  $("#gatemark").style.left=Math.min(100,(need/3.5)*100)+"%";
+  $("#gatetext").textContent="It does not open on demand. It opens when you settle.";
+  const until=performance.now()+45000;
+  const t=setInterval(async()=>{
+    let sd=null, trust="—";
+    try{ const s=await (await fetch("/state")).json(); sd=s.personal_sigma; trust=s.trust; }catch(e){}
+    const timedOut=performance.now()>until;
+    if(sd===null){
+      $("#readout").textContent = trust==="unscored"
+        ? "no reading — the band refuses to guess" : "waiting for the band…";
+      $("#gatefill").style.width="0%";
+    } else {
+      $("#readout").textContent=`${sd>=0?"+":""}${sd.toFixed(2)} sd from your own resting baseline · needs ${need.toFixed(1)}`;
+      $("#gatefill").style.width=Math.max(0,Math.min(100,(sd/3.5)*100))+"%";
     }
-  }, 100);
-}
-
-function walkThroughDoor(after){
-  guy.classList.add("walking");
-  guy.style.left = "calc(93% - 54px)";
-  setTimeout(() => { door.classList.add("open"); }, 1200);
-  setTimeout(() => {
-    guy.classList.remove("walking");
-    room.classList.add("leaving");
-    setTimeout(() => {
-      guy.style.transition="none"; guy.style.left="12%"; door.classList.remove("open");
-      room.classList.remove("leaving"); room.classList.add("entering");
-      requestAnimationFrame(()=>requestAnimationFrame(()=>{
-        guy.style.transition=""; room.classList.remove("entering"); after();
-      }));
-    }, 600);
-  }, 1900);
-}
-
-function endRoom(){
-  const nextIdx = ri+1;
-  if (nextIdx >= ROOMS.length){ return finish(); }
-  const threshold = ROOMS[nextIdx].gate;
-  const go = () => walkThroughDoor(() => { ri=nextIdx; qi=0; showQuestion(); });
-  if (threshold == null) go(); else runGate(threshold, go);
+    if((sd!==null && sd<=need) || timedOut){
+      clearInterval(t);
+      $("#gatetext").textContent = timedOut
+        ? "The door opened on time, not on you. That is data too."
+        : "You settled. The door gives.";
+      setTimeout(render,1500);
+    }
+  },400);
 }
 
 function finish(){
   stopClock();
-  $("#donetext").textContent =
-    `Final score ${score}. ${log.filter(e=>e.event===EV.KEY).length} keystrokes and `+
-    `${log.filter(e=>e.event===EV.BLUR).length} focus breaks recorded across the session.`;
-  $("#done").classList.remove("hidden");
+  const keys=log.filter(e=>e.event===EV.KEY).length;
+  const chg=log.filter(e=>e.event===EV.CHANGE).length;
+  const to=log.filter(e=>e.event===EV.COMMIT&&e.detail.endsWith("timeout")).length;
+  $("#donesub").textContent="what your body did while you decided";
+  $("#donetext").textContent=
+    `${QS.length} questions. ${keys} option presses for ${QS.length} commits, `+
+    `${chg} changes of mind, ${to} ran out of candle.`;
+  $("#donealign").textContent = bridgeUp
+    ? "Every event was stamped against the device clock. The report can put your body and your choices on one timeline."
+    : "The band was not connected, so these are browser timings only — they cannot be laid against physiology, and the report must say so.";
+  show("done");
 }
 
-addEventListener("keydown", e => {
-  if (!$("#intro").classList.contains("hidden") && e.key==="Enter"){
-    $("#intro").classList.add("hidden"); showQuestion(); return;
-  }
-  if (!$("#done").classList.contains("hidden")){
-    if (e.key.toLowerCase()==="r") location.reload();
-    if (e.key.toLowerCase()==="e"){
-      const blob = new Blob([JSON.stringify(log,null,1)], {type:"application/json"});
+addEventListener("keydown",e=>{
+  if(!$("#title").hidden){ if(e.key==="Enter"&&QS.length){ startAudio(); render(); } return; }
+  if(!$("#done").hidden){
+    if(e.key.toLowerCase()==="r") location.reload();
+    if(e.key.toLowerCase()==="e"){
+      const b=new Blob([JSON.stringify(log,null,1)],{type:"application/json"});
       const a=document.createElement("a");
-      a.href=URL.createObjectURL(blob); a.download="behaviour_events.json"; a.click();
+      a.href=URL.createObjectURL(b); a.download="behaviour_events.json"; a.click();
     }
+    return;
   }
+  if($("#question").hidden) return;
+  const k=e.key.toUpperCase();
+  if("ABCD".includes(k)&&k.length===1) pick(k);
+  else if(e.key==="Enter") commit();
 });
 </script>
