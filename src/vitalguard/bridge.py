@@ -28,6 +28,7 @@ Nothing here computes physiology. It is a socket, a lock, and a list.
 from __future__ import annotations
 
 import json
+import re
 import threading
 from dataclasses import asdict, dataclass
 from functools import partial
@@ -35,7 +36,8 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from statistics import median
 
-from .behaviour import BehaviourEvent, Channel, Event
+from .behaviour import BehaviourBaseline, BehaviourEvent, Channel, Event
+from .behaviour import summarise as summarise_behaviour
 from .camera import FaceObservation
 from .camera import summarise as summarise_faces
 
@@ -167,6 +169,27 @@ class SharedState:
             snapshot = list(self.faces)
         return summarise_faces(snapshot)
 
+    def blocks(self) -> dict[int, list[BehaviourEvent]]:
+        """Split the session into acts, using the act number in each question id.
+
+        The act boundary is the only segmentation the report needs, and the game
+        already encodes it in `a<act>q<n>`. Deriving it from timing instead would
+        invent a boundary the test did not actually have.
+        """
+        out: dict[int, list[BehaviourEvent]] = {}
+        act = None
+        for e in self.behaviour_events():
+            if e.event is Event.QUESTION_SHOWN:
+                m = re.match(r"a(\d+)q", e.detail or "")
+                act = int(m.group(1)) if m else act
+            if act is not None:
+                out.setdefault(act, []).append(e)
+        return out
+
+    def faces_between(self, t0: int, t1: int) -> list[FaceObservation]:
+        with self._lock:
+            return [f for f in self.faces if t0 <= f.t_ms <= t1]
+
     def audit(self) -> ClockAudit:
         with self._lock:
             offs = [e.offset_ms for e in self.events if e.offset_ms is not None]
@@ -200,8 +223,19 @@ class SharedState:
         return out
 
 
+def _per_question(evs: list[BehaviourEvent]) -> list[list[BehaviourEvent]]:
+    """One list per question_shown, so a single act yields several observations."""
+    out: list[list[BehaviourEvent]] = []
+    for e in evs:
+        if e.event is Event.QUESTION_SHOWN or not out:
+            out.append([])
+        out[-1].append(e)
+    return [b for b in out if b]
+
+
 class _Handler(SimpleHTTPRequestHandler):
     state: SharedState = None      # type: ignore[assignment]
+    bridge: "Bridge" = None        # type: ignore[assignment]
 
     def log_message(self, *a) -> None:      # the pipeline owns the terminal
         pass
@@ -218,6 +252,8 @@ class _Handler(SimpleHTTPRequestHandler):
     def do_GET(self) -> None:
         if self.path.startswith("/state"):
             return self._json(self.state.snapshot())
+        if self.path.startswith("/report"):
+            return self._json(self.bridge.report())
         if self.path.startswith("/audit"):
             return self._json(asdict(self.state.audit()) | {"alignable": self.state.audit().alignable})
         return super().do_GET()
@@ -244,7 +280,8 @@ class Bridge:
         self._dir = str(Path(game_dir).resolve())
         # `directory` must be bound per-instance: SimpleHTTPRequestHandler's
         # __init__ overwrites any class attribute of that name with cwd.
-        handler = partial(type("Handler", (_Handler,), {"state": self.state}),
+        handler = partial(type("Handler", (_Handler,),
+                               {"state": self.state, "bridge": self}),
                           directory=self._dir)
         self._srv = ThreadingHTTPServer(("127.0.0.1", port), handler)
         self._thread: threading.Thread | None = None
@@ -270,6 +307,62 @@ class Bridge:
     def __exit__(self, *exc) -> None:
         self.stop()
 
+    def report(self) -> dict:
+        """The close: every act compared to the person's OWN practice round.
+
+        Act 1 is untimed and unscored, and it exists for exactly this -- without
+        it every metric here would need a population threshold, which is the
+        cross-person scoring this project refuses. If act 1 is missing or too
+        short the report says so and returns no deviations, rather than falling
+        back to fixed numbers that would look identical to real ones.
+        """
+        blocks = self.state.blocks()
+        audit = self.state.audit()
+        out: dict = {
+            "alignable": audit.alignable,
+            "clock_spread_ms": audit.offset_spread_ms,
+            "acts": {}, "baselined": False, "why": None,
+        }
+        if not blocks:
+            out["why"] = "no questions were answered"
+            return out
+
+        def block_summary(evs):
+            t0, t1 = evs[0].t_ms, evs[-1].t_ms
+            faces = self.state.faces_between(t0, t1)
+            cam = summarise_faces(faces) if faces else None
+            return summarise_behaviour(evs, camera=cam)
+
+        summaries = {a: block_summary(evs) for a, evs in sorted(blocks.items()) if evs}
+        for a, s in summaries.items():
+            out["acts"][a] = {"metrics": s.metrics, "n_answers": s.n_answers}
+
+        base = BehaviourBaseline()
+        practice = summaries.get(1)
+        if practice is None:
+            out["why"] = "no practice act -- nothing to compare against"
+            return out
+        # The practice act is one block; the baseline needs several observations
+        # of it, so each question inside it becomes its own observation.
+        for evs in _per_question(blocks[1]):
+            base.update(block_summary(evs))
+        if not base.calibrated:
+            out["why"] = "practice round too short to be a reference"
+            return out
+
+        out["baselined"] = True
+        for a, s in summaries.items():
+            if a == 1:
+                continue
+            out["acts"][a]["deviations"] = [
+                {"metric": d.metric, "value": d.value, "baseline": d.baseline,
+                 "personal_sigma": d.personal_sigma, "channel": d.channel.value,
+                 "says": str(d),
+                 "spread_floored": base.spread_is_floored(d.metric)}
+                for d in base.report(s)
+            ]
+        return out
+
     def save(self, path: str | Path) -> ClockAudit:
         """Write the session. The audit goes in the file, not just the console.
 
@@ -281,6 +374,7 @@ class Bridge:
             "clock_audit": asdict(a) | {"alignable": a.alignable},
             "camera": self.state._camera_state(),
             "camera_summary": self.state.face_summary(),
+            "report": self.report(),
             "events": [asdict(e) | {"offset_ms": e.offset_ms} for e in self.state.events],
             "faces": [asdict(f) for f in self.state.faces],
         }, indent=1))

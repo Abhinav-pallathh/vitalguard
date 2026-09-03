@@ -176,6 +176,18 @@ h1 em{font-style:normal;display:block;color:var(--dust);font-size:.42em;letter-s
   .meter .fill{height:100%;background:linear-gradient(90deg,var(--rust),var(--ember));width:0;transition:width .4s linear}
   .meter .mark{position:absolute;top:-6px;width:1px;height:17px;background:var(--bone);opacity:.85}
   .readout{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--dust)}
+  /* The reveal. One row per thing that changed, biggest change first. */
+  .rows{display:grid;gap:0;margin:26px 0 8px;max-width:620px;border-top:1px solid var(--line)}
+  .row{display:grid;grid-template-columns:1fr auto;gap:18px;align-items:baseline;
+       padding:13px 0;border-bottom:1px solid var(--line)}
+  .row .what{color:var(--ash);font-size:14px;line-height:1.45}
+  .row .what b{color:var(--bone);font-weight:400}
+  .row .sd{font-size:13px;letter-spacing:.1em;color:var(--dust);white-space:nowrap;
+           font-variant-numeric:tabular-nums}
+  .row.big .sd{color:var(--ember)}
+  .row .ch{font-size:9px;letter-spacing:.22em;text-transform:uppercase;color:var(--line);
+           display:block;margin-top:3px}
+  .caveat{font-size:12.5px;color:var(--dust);max-width:56ch;margin-top:20px;line-height:1.6}
 </style>
 
 <!-- The room. Drawn, not photographed — every line is displaced by noise so it
@@ -308,7 +320,8 @@ h1 em{font-style:normal;display:block;color:var(--dust);font-size:.42em;letter-s
     <h1 style="font-size:clamp(34px,6vw,64px)">You are through<em id="donesub"></em></h1>
     <div class="rule"></div>
     <p id="donetext"></p>
-    <p class="cold" id="donealign"></p>
+    <div class="rows" id="rows"></div>
+    <p class="caveat" id="donealign"></p>
     <div class="prompt-key">E to export the behaviour log&nbsp;&nbsp;·&nbsp;&nbsp;R to run again</div>
   </div>
 </section>
@@ -457,19 +470,59 @@ function runGate(){
   },400);
 }
 
-function finish(){
+async function finish(){
   stopClock();
-  const keys=log.filter(e=>e.event===EV.KEY).length;
   const chg=log.filter(e=>e.event===EV.CHANGE).length;
   const to=log.filter(e=>e.event===EV.COMMIT&&e.detail.endsWith("timeout")).length;
-  $("#donesub").textContent="what your body did while you decided";
+  $("#donesub").textContent="what you did while you decided";
   $("#donetext").textContent=
-    `${QS.length} questions. ${keys} option presses for ${QS.length} commits, `+
-    `${chg} changes of mind, ${to} ran out of candle.`;
-  $("#donealign").textContent = bridgeUp
-    ? "Every event was stamped against the device clock. The report can put your body and your choices on one timeline."
-    : "The band was not connected, so these are browser timings only — they cannot be laid against physiology, and the report must say so.";
+    `${QS.length} questions. ${chg} changes of mind, ${to} ran out of candle.`;
   show("done");
+
+  // Everything below is measured against the person's OWN practice round, so
+  // the page must wait for the server rather than invent anything locally.
+  let r=null;
+  try{ r=await (await fetch("/report")).json(); }catch(e){}
+  const rows=$("#rows"); rows.textContent="";
+
+  if(!r || !r.baselined){
+    $("#donealign").textContent = !r
+      ? "The band was not connected, so these are browser timings only. They cannot be laid against your heartbeat, and nothing here is a result."
+      : `No comparison was possible — ${r.why}. Rather than fall back to fixed thresholds, which would look identical to a real measurement, the report stops here.`;
+    return;
+  }
+
+  const acts=Object.keys(r.acts).filter(a=>a!=="1").sort();
+  const seen=new Set(); const picked=[];
+  for(const a of acts.reverse())            // hardest act first
+    for(const d of (r.acts[a].deviations||[]))
+      if(!seen.has(d.metric)){ seen.add(d.metric); picked.push(d); }
+  picked.sort((x,y)=>Math.abs(y.personal_sigma)-Math.abs(x.personal_sigma));
+
+  for(const d of picked.slice(0,7)){
+    const row=document.createElement("div");
+    row.className="row"+(Math.abs(d.personal_sigma)>=2?" big":"");
+    const what=document.createElement("div"); what.className="what";
+    what.textContent=d.says;
+    const ch=document.createElement("span"); ch.className="ch"; ch.textContent=d.channel;
+    what.appendChild(ch);
+    const sd=document.createElement("div"); sd.className="sd";
+    // A sigma off a floored spread is a lower bound on how unusual something
+    // was, not a calibrated z-score. Printing "+24.6 sd" there would state a
+    // precision the practice round did not earn.
+    sd.textContent = d.spread_floored
+      ? "beyond practice"
+      : (d.personal_sigma>=0?"+":"")+d.personal_sigma.toFixed(1)+" sd";
+    row.append(what,sd); rows.appendChild(row);
+  }
+  if(picked.some(d=>d.spread_floored)){
+    const n=document.createElement("div"); n.className="caveat";
+    n.textContent="Rows marked \u201cbeyond practice\u201d changed more than your practice round can put a number on \u2014 you were too consistent in it for a spread to be measured. They are directional, not precise.";
+    rows.after(n);
+  }
+  $("#donealign").textContent = r.alignable
+    ? `Every one of these is measured against your own practice round, never against anyone else. Your choices and your heartbeat were stamped on the same clock to within ${r.clock_spread_ms} ms.`
+    : "The two clocks could not be shown to agree, so your choices and your heartbeat are reported separately and must not be read as one timeline.";
 }
 
 addEventListener("keydown",e=>{

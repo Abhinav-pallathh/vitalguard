@@ -107,28 +107,55 @@ class BehaviourEvent:
 # The phrasing is the honesty check: if you cannot write this sentence without
 # naming a feeling, the metric does not belong here.
 METRICS: dict[str, tuple[str, str]] = {
-    "first_key_latency_ms": ("ms", "time from question appearing to first key"),
-    "iki_cv":               ("ratio", "irregularity of typing rhythm"),
-    "idle_max_ms":          ("ms", "longest pause while answering"),
-    "backspace_rate":       ("per key", "corrections per keystroke"),
-    "answer_changes":       ("count", "answers changed after committing"),
+    # -- the two clocks of a decision -------------------------------------
+    "decision_latency_ms":  ("ms", "time from the question appearing to the first option touched"),
+    "commit_latency_ms":    ("ms", "time from the last option touched to committing it"),
+    # -- changing your mind ------------------------------------------------
+    "switches_per_q":       ("count", "options touched after the first, per question"),
+    "first_choice_kept":    ("0-1", "fraction of questions committed on the first option touched"),
+    # -- stopping ----------------------------------------------------------
+    "idle_max_ms":          ("ms", "longest gap between any two actions"),
+    "timeout_fraction":     ("0-1", "fraction of questions with no answer when the clock ran out"),
     "focus_losses":         ("count", "times the window lost focus"),
+    # -- other channels, same report --------------------------------------
     "fidget":               ("g", "hand movement, accelerometer"),
+    "head_motion_px_s":     ("px/s", "median landmark travel per second, scaled by face width"),
+    "face_absent_fraction": ("0-1", "fraction of camera frames in which no face was found"),
+    "turn_fraction":        ("0-1", "fraction of camera frames with the nose off-centre between the eyes"),
+    "head_tilt_range_deg":  ("deg", "largest minus smallest eye-line angle"),
 }
 
 CHANNEL_OF: dict[str, Channel] = {
     "fidget": Channel.MOTION,
+    "head_motion_px_s": Channel.CAMERA,
+    "face_absent_fraction": Channel.CAMERA,
+    "turn_fraction": Channel.CAMERA,
+    "head_tilt_range_deg": Channel.CAMERA,
 }
 """Metrics not from the keyboard. Absent means Channel.INPUT. B4."""
 
-MIN_KEYSTROKES = 12
-"""Below this, typing-rhythm metrics are noise and report None.
+MIN_ANSWERS = 2
+"""Below this, per-question rates are noise and report None.
 
-An inter-keystroke CV over four keys is not a measurement of anything. This
-mirrors baseline.py's refusal to report a baseline under MIN_COVERAGE_S: a
-number computed from too little evidence is worse than no number, because it
-looks identical to a real one.
+A "fraction of questions" over one question is not a measurement of anything.
+Mirrors baseline.py's refusal to report a baseline under MIN_COVERAGE_S: a
+number from too little evidence is worse than no number, because it looks
+identical to a real one.
 """
+
+# ⚠ WHY THESE METRICS AND NOT TYPING ONES.
+# The test used to take typed answers, and this module measured keystroke
+# rhythm, backspaces and first-key latency. The game is four options now, so
+# nobody types and every one of those read zero forever -- live code measuring
+# something that no longer happens, which is worse than no code at all.
+#
+# The replacement is better, not merely different, because multiple choice
+# separates two things typing conflated:
+#   decision_latency  -- how long before you touch anything (reading + instinct)
+#   commit_latency    -- how long you sit on your choice before confirming it
+# The second is the doubt window, and it has no equivalent in a typed answer.
+# `first_choice_kept` is the same signal counted rather than timed, and it is
+# the one a person understands instantly: "you went back on a third of them."
 
 MIN_PRACTICE_ANSWERS = 3
 """B3. Fewer practice questions than this and there is no usable reference."""
@@ -146,50 +173,128 @@ class BehaviourSummary:
         return {CHANNEL_OF.get(m, Channel.INPUT) for m in self.metrics}
 
 
-def summarise(events: list[BehaviourEvent], fidget: float | None = None) -> BehaviourSummary:
+@dataclass(slots=True)
+class QuestionRecord:
+    """One question, from appearing to committed. The unit everything is built on."""
+
+    qid: str
+    shown_ms: int
+    first_touch_ms: int | None = None
+    first_key: str | None = None
+    last_touch_ms: int | None = None
+    committed_ms: int | None = None
+    committed_key: str | None = None
+    timed_out: bool = False
+    switches: int = 0
+
+    @property
+    def decision_latency_ms(self) -> int | None:
+        if self.first_touch_ms is None:
+            return None
+        return self.first_touch_ms - self.shown_ms
+
+    @property
+    def commit_latency_ms(self) -> int | None:
+        """The doubt window: chosen, but not yet committed."""
+        if self.committed_ms is None or self.last_touch_ms is None or self.timed_out:
+            return None
+        return max(0, self.committed_ms - self.last_touch_ms)
+
+    @property
+    def kept_first(self) -> bool | None:
+        if self.committed_key is None or self.first_key is None:
+            return None
+        return self.committed_key == self.first_key
+
+
+def parse(events: list[BehaviourEvent]) -> list[QuestionRecord]:
+    """Segment a raw event stream into one record per question.
+
+    Events whose detail the game did not write in the agreed shape are skipped
+    rather than guessed at -- an unparseable commit means we do not know what
+    was chosen, and inventing a key would put a fabricated answer into a
+    behaviour report.
+    """
+    out: list[QuestionRecord] = []
+    cur: QuestionRecord | None = None
+    for e in sorted(events, key=lambda x: x.t_ms):
+        if e.event is Event.QUESTION_SHOWN:
+            cur = QuestionRecord(qid=e.detail or f"q{len(out)}", shown_ms=e.t_ms)
+            out.append(cur)
+        elif cur is None:
+            continue                                  # events before any question
+        elif e.event is Event.KEYDOWN:
+            if cur.first_touch_ms is None:
+                cur.first_touch_ms, cur.first_key = e.t_ms, e.detail or None
+            cur.last_touch_ms = e.t_ms
+        elif e.event is Event.ANSWER_CHANGED:
+            cur.switches += 1
+        elif e.event is Event.ANSWER_COMMITTED:
+            cur.committed_ms = e.t_ms
+            parts = (e.detail or "").split(":")
+            if len(parts) >= 2:
+                cur.timed_out = parts[-1] == "timeout"
+                cur.committed_key = None if cur.timed_out else (parts[1] or None)
+    return out
+
+
+def summarise(events: list[BehaviourEvent], fidget: float | None = None,
+              camera: dict | None = None) -> BehaviourSummary:
     """Reduce a block of raw events to per-block metrics.
 
-    `fidget` comes from the existing 100 Hz accelerometer pipeline
-    (schema.accel_magnitude) rather than from an event, because motion is
-    sampled continuously and events are sparse. It is optional so a session
-    with no device attached still produces a valid input-only summary.
-    """
-    ev = sorted(events, key=lambda e: e.t_ms)
-    keys = [e for e in ev if e.event is Event.KEYDOWN]
-    shown = [e for e in ev if e.event is Event.QUESTION_SHOWN]
-    committed = [e for e in ev if e.event is Event.ANSWER_COMMITTED]
+    `fidget` comes from the existing 100 Hz accelerometer pipeline rather than
+    from an event, because motion is sampled continuously and events are sparse.
+    `camera` is a camera.summarise() dict, merged in so one report spans all
+    three channels. Both optional: a session with no device and no phone still
+    produces a valid input-only summary rather than a broken one.
 
+    A metric absent from the returned dict means NOT MEASURABLE from this block.
+    It is never defaulted to zero -- "did not hesitate" and "we could not tell"
+    are different claims, and only one of them is evidence.
+    """
+    qs = parse(events)
+    ev = sorted(events, key=lambda e: e.t_ms)
     m: dict[str, float] = {}
 
-    # Hesitation: median over questions, so one long think does not dominate.
-    latencies = []
-    for q in shown:
-        nxt = next((k.t_ms for k in keys if k.t_ms >= q.t_ms), None)
-        if nxt is not None:
-            latencies.append(nxt - q.t_ms)
-    if latencies:
-        m["first_key_latency_ms"] = float(np.median(latencies))
+    answered = [q for q in qs if q.committed_ms is not None]
+    n = len(answered)
 
-    if len(keys) >= MIN_KEYSTROKES:
-        gaps = np.diff([k.t_ms for k in keys]).astype(float)
-        # Gaps spanning a question boundary are think-time, not typing rhythm.
-        within = np.array([
-            g for g, a in zip(gaps, [k.t_ms for k in keys[:-1]])
-            if not any(a < s.t_ms <= a + g for s in shown)
-        ], dtype=float)
-        if within.size >= 2 and within.mean() > 0:
-            m["iki_cv"] = float(within.std() / within.mean())
-            m["idle_max_ms"] = float(within.max())
-        m["backspace_rate"] = sum(
-            1 for e in ev if e.event is Event.BACKSPACE) / len(keys)
+    lat = [q.decision_latency_ms for q in qs if q.decision_latency_ms is not None]
+    if lat:
+        m["decision_latency_ms"] = float(np.median(lat))
 
-    m["answer_changes"] = float(sum(1 for e in ev if e.event is Event.ANSWER_CHANGED))
+    com = [q.commit_latency_ms for q in answered if q.commit_latency_ms is not None]
+    if com:
+        m["commit_latency_ms"] = float(np.median(com))
+
+    if n >= MIN_ANSWERS:
+        m["switches_per_q"] = float(sum(q.switches for q in answered) / n)
+        kept = [q.kept_first for q in answered if q.kept_first is not None]
+        if kept:
+            m["first_choice_kept"] = float(sum(kept) / len(kept))
+        m["timeout_fraction"] = float(sum(q.timed_out for q in answered) / n)
+
+    if len(ev) >= 2:
+        m["idle_max_ms"] = float(max(b.t_ms - a.t_ms for a, b in zip(ev, ev[1:])))
+
     m["focus_losses"] = float(sum(1 for e in ev if e.event is Event.FOCUS_LOST))
 
     if fidget is not None:
         m["fidget"] = float(fidget)
 
-    return BehaviourSummary(metrics=m, n_keystrokes=len(keys), n_answers=len(committed))
+    # Camera metrics ride the same report and the same baseline. Only the ones
+    # this module declares are taken -- a new camera metric must be added to
+    # METRICS deliberately, so it cannot arrive unannounced and unphrased.
+    if camera:
+        for k in ("head_motion_px_s", "face_absent_fraction",
+                  "turn_fraction", "head_tilt_range_deg"):
+            v = camera.get(k)
+            if v is not None:
+                m[k] = float(v)
+
+    return BehaviourSummary(metrics=m, n_keystrokes=sum(1 for e in ev
+                                                        if e.event is Event.KEYDOWN),
+                            n_answers=n)
 
 
 @dataclass(slots=True)
@@ -247,6 +352,23 @@ class BehaviourBaseline:
         # same failure MIN_SPREAD_BPM guards against for heart rate.
         spread = max(mad * MAD_TO_SIGMA, abs(centre) * 0.10, 1e-6)
         return centre, spread
+
+    def spread_is_floored(self, metric: str) -> bool | None:
+        """True when the practice round was too uniform to measure spread.
+
+        The floor keeps a steady practice round from turning every later
+        observation into a 40-sigma event, but it also means the sigma is no
+        longer a calibrated z-score -- it is a lower bound on how unusual
+        something was. A report that prints "+24 sd" off a floored spread is
+        stating a precision it does not have, so it has to say which it is.
+        """
+        vals = self._obs.get(metric)
+        if not self.calibrated or vals is None or len(vals) < 2:
+            return None
+        a = np.fromiter(vals, dtype=float)
+        centre = float(np.median(a))
+        mad = float(np.median(np.abs(a - centre)))
+        return mad * MAD_TO_SIGMA < abs(centre) * 0.10
 
     def deviation(self, summary: BehaviourSummary, metric: str) -> BehaviourDeviation | None:
         """Compare one metric under load to the practice round. None if unsafe.

@@ -54,6 +54,87 @@
   "rationale": "You have what you took. A answers what is left."
  },
  {
+  "id": "a1q3",
+  "act": 1,
+  "kind": "general",
+  "seconds": null,
+  "prompt": "Practice 3: how many sides does a square have?",
+  "options": [
+   {
+    "key": "A",
+    "text": "Three"
+   },
+   {
+    "key": "B",
+    "text": "Four"
+   },
+   {
+    "key": "C",
+    "text": "Five"
+   },
+   {
+    "key": "D",
+    "text": "Six"
+   }
+  ],
+  "answer": "B",
+  "rationale": "practice"
+ },
+ {
+  "id": "a1q4",
+  "act": 1,
+  "kind": "general",
+  "seconds": null,
+  "prompt": "Practice 4: how many sides does a square have?",
+  "options": [
+   {
+    "key": "A",
+    "text": "Three"
+   },
+   {
+    "key": "B",
+    "text": "Four"
+   },
+   {
+    "key": "C",
+    "text": "Five"
+   },
+   {
+    "key": "D",
+    "text": "Six"
+   }
+  ],
+  "answer": "B",
+  "rationale": "practice"
+ },
+ {
+  "id": "a1q5",
+  "act": 1,
+  "kind": "general",
+  "seconds": null,
+  "prompt": "Practice 5: how many sides does a square have?",
+  "options": [
+   {
+    "key": "A",
+    "text": "Three"
+   },
+   {
+    "key": "B",
+    "text": "Four"
+   },
+   {
+    "key": "C",
+    "text": "Five"
+   },
+   {
+    "key": "D",
+    "text": "Six"
+   }
+  ],
+  "answer": "B",
+  "rationale": "practice"
+ },
+ {
   "id": "a2q1",
   "act": 2,
   "kind": "general",

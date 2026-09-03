@@ -180,3 +180,60 @@ def test_sample_rate_stamping_keeps_the_spread_inside_the_alignable_bar(bridge):
     a = bridge.state.audit()
     assert a.offset_spread_ms == 0.0
     assert a.alignable is True
+
+
+# --- the report -------------------------------------------------------------
+
+def _q(bridge, t0, qid, first="A", final=None, latency=900, commit=800, switch=None):
+    from vitalguard.behaviour import Event
+    final = final or first
+    bridge.state.tick(t0);          post(bridge, {"t_ms": t0, "event": "question_shown", "detail": qid})
+    t = t0 + latency
+    bridge.state.tick(t);           post(bridge, {"t_ms": t, "event": "keydown", "detail": first})
+    if switch:
+        t += switch
+        bridge.state.tick(t);       post(bridge, {"t_ms": t, "event": "keydown", "detail": final})
+        bridge.state.tick(t);       post(bridge, {"t_ms": t, "event": "answer_changed", "detail": f"{first}->{final}"})
+    t += commit
+    bridge.state.tick(t);           post(bridge, {"t_ms": t, "event": "answer_committed", "detail": f"{qid}:{final}"})
+    return t
+
+
+def test_report_without_a_practice_act_refuses_to_baseline(bridge):
+    """Falling back to fixed thresholds would produce numbers indistinguishable
+    from real ones -- the exact cross-person scoring this project refuses."""
+    t = 0
+    for i in range(3):
+        t = _q(bridge, t + 1000, f"a2q{i}")
+    r = get(bridge, "/report")
+    assert r["baselined"] is False
+    assert "practice" in r["why"]
+    assert r["acts"]["2"]["n_answers"] == 3
+
+
+def test_report_baselines_later_acts_against_the_practice_round(bridge):
+    t = 0
+    for i in range(4):
+        t = _q(bridge, t + 1000, f"a1q{i}", latency=900 + i * 30)
+    for i in range(3):
+        t = _q(bridge, t + 1000, f"a4q{i}", latency=3_500, switch=600)
+    r = get(bridge, "/report")
+    assert r["baselined"] is True
+    devs = {d["metric"]: d for d in r["acts"]["4"]["deviations"]}
+    assert devs["decision_latency_ms"]["personal_sigma"] > 0
+    assert "practice" in devs["decision_latency_ms"]["says"]
+
+
+def test_acts_are_split_by_the_question_id_not_by_timing(bridge):
+    """The game already encodes the act. Deriving it from gaps would invent a
+    boundary the test did not have."""
+    t = _q(bridge, 0, "a1q0")
+    t = _q(bridge, t + 500, "a3q0")      # no long gap between them
+    r = get(bridge, "/report")
+    assert set(r["acts"]) == {"1", "3"}
+
+
+def test_report_carries_the_clock_verdict_so_it_is_never_implied(bridge):
+    _q(bridge, 0, "a1q0")
+    r = get(bridge, "/report")
+    assert "alignable" in r and "clock_spread_ms" in r
