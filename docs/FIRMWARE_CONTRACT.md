@@ -29,8 +29,8 @@ If you only read one line: **emit these 14 fields, in this order, at 100 Hz.**
 | MAX30102 SCL | 22 | I2C | shared bus |
 | MPU6050 | 21 / 22 | I2C | addr `0x68` — no clash |
 | OLED SSD1306 | 21 / 22 | I2C | addr `0x3C` — no clash |
-| GSR out | **34** | `analogRead` | ADC1, input-only pin |
-| AD8232 OUTPUT | **35** | `analogRead` | ADC1, input-only pin |
+| GSR out | **35** | `analogRead` | ADC1, input-only pin. Swapped 2026-09-04 to match the bench. |
+| AD8232 OUTPUT | **34** | `analogRead` | ADC1, input-only pin. Swapped 2026-09-04 to match the bench. |
 | AD8232 LO+ | 32 | digital in | electrode detached = HIGH |
 | AD8232 LO− | 33 | digital in | electrode detached = HIGH |
 | Buzzer | 25 | digital / PWM | |
@@ -40,7 +40,7 @@ If you only read one line: **emit these 14 fields, in this order, at 100 Hz.**
 **⚠ The one that will bite you:** both analog sensors MUST be on **ADC1**
 (GPIO 32–39). **ADC2 stops working the instant WiFi is enabled** — `analogRead`
 returns garbage with no error. On the bench with WiFi off it looks perfect.
-GSR on 34 and ECG on 35 are correct. Buzzer on 25 and button on 27 are ADC2
+GSR on 35 and ECG on 34 are correct (swapped 2026-09-04). Buzzer on 25 and button on 27 are ADC2
 pins but used *digitally*, which is unaffected.
 
 Three I2C devices on GPIO 21/22 with the existing 2× 10 kΩ pull-ups is fine.
@@ -63,8 +63,8 @@ t_ms,ppg_ir,ppg_red,ax,ay,az,gx,gy,gz,gsr_raw,ecg_raw,lead_off,btn,label
 | `ppg_red` | int | MAX30102 red, **raw counts** |
 | `ax ay az` | float | accel in **g** |
 | `gx gy gz` | float | gyro in **deg/s** |
-| `gsr_raw` | int | `analogRead(34)`, 0–4095 |
-| `ecg_raw` | int | `analogRead(35)`, 0–4095 |
+| `gsr_raw` | int | `analogRead(35)`, 0–4095 |
+| `ecg_raw` | int | `analogRead(34)`, 0–4095 |
 | `lead_off` | int | `digitalRead(32) \|\| digitalRead(33)` → 0 or 1 |
 | `btn` | int | button pressed → 1 |
 | `label` | str | `unknown` \| `rest` \| `exercise` \| `stress` |
@@ -86,7 +86,7 @@ void loop() {
 
   logfile.printf("%lu,%lu,%lu,%.4f,%.4f,%.4f,%.2f,%.2f,%.2f,%d,%d,%d,%d,%s\n",
     millis(), irValue, redValue, ax, ay, az, gx, gy, gz,
-    analogRead(34), analogRead(35), lo, btn, currentLabel);
+    analogRead(35), analogRead(34), lo, btn, currentLabel);
 }
 ```
 

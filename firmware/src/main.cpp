@@ -42,8 +42,19 @@
 // --- pin map (docs/FIRMWARE_CONTRACT.md) ----------------------------------
 static const int PIN_SDA      = 21;
 static const int PIN_SCL      = 22;
-static const int PIN_GSR      = 34;   // ADC1. MUST be ADC1 -- see note below.
-static const int PIN_ECG      = 35;   // ADC1.
+static const int PIN_GSR      = 35;   // ADC1. MUST be ADC1 -- see note below.
+static const int PIN_ECG      = 34;   // ADC1.
+// 2026-09-04: GSR and ECG SWAPPED to match the bench.
+// These were 34/35 the other way round. Sujan's rewire sheet has AD8232 OUT on
+// D34, and that is the wiring he bench-proved a clean ~80 bpm QRS through. Both
+// pins are ADC1 so the swap is electrically free, and a tested wire beats an
+// untested constant. Nothing else changes: gsr_raw still means GSR.
+//
+// ⚠ These two are the most dangerous constants in the file. Both are analogRead
+// on adjacent ADC1 pins, so crossing them raises no error and produces numbers
+// that look entirely plausible -- gsr_raw quietly containing ECG. There is no
+// runtime check that can catch it. The boot self-test is the only defence:
+// touch the ECG leads and watch which channel moves.
 static const int PIN_LO_PLUS  = 32;
 static const int PIN_LO_MINUS = 33;
 static const int PIN_BUZZER   = 25;   // ADC2 pin, used digitally -- unaffected.
@@ -51,8 +62,8 @@ static const int PIN_BTN      = 27;   // ADC2 pin, used digitally -- unaffected.
 static const int PIN_SD_CS    =  5;
 
 // ⚠ ADC2 stops working the instant WiFi is enabled: analogRead returns garbage
-// with no error and it looks perfect on the bench with WiFi off. GSR on 34 and
-// ECG on 35 are ADC1 and are therefore safe. WiFi is not enabled in this
+// with no error and it looks perfect on the bench with WiFi off. GSR on 35 and
+// ECG on 34 are ADC1 and are therefore safe. WiFi is not enabled in this
 // firmware at all, which is the belt to that braces.
 
 // 230400, not 115200. At 100 Hz a row is ~60 bytes = 6 kB/s, which is 52% of
