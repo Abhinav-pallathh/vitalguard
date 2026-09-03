@@ -25,3 +25,9 @@ data/wesad/WESAD/*/*.pkl
 # Flash backup of the board as it arrived (Sujan sketch). 4 MB binary, kept on
 # disk, not in a repo whose .git is already 2.6 GB. See docs/ notes for restore.
 firmware/backup/
+
+# The WESAD dataset. 2.1 GB zip + 930 MB pickles -- these were committed once
+# and made the repo unpushable (GitHub hard-rejects blobs over 100 MB); the
+# history was rewritten with git-filter-repo on 2026-09-04 to remove them.
+# Download separately: https://ubicomp.eti.uni-siegen.de/home/datasets/icmi18/
+data/wesad/

@@ -1,263 +1,177 @@
-# VitalGuard
+# VitalGuard — The Gate
 
-Personalized, context-aware, signal-honest vitals monitoring on an ESP32.
+**A composure trainer that refuses to lie to you.**
+Team BioForge · Recursion Edition II
 
-> **The scorer proposes. A deterministic gate concludes.**
-> No inferred number reaches a user without passing the quality gate. A reading
-> we do not trust is reported as `UNSCORED` — never a value, never a guess,
-> never the last good number held over.
+You sit a short, timed, deliberately grim test while a wrist-worn ESP32 records
+your body. Afterwards it tells you what your body did while you decided — and
+how fast you came back down — measured against *your own* resting baseline,
+never against anyone else's.
+
+> ### The thesis
+> **The model navigates. Determinism concludes.**
+>
+> Two refusals hold the whole system together:
+> 1. **Never show a number we don't trust.** A degraded signal is reported as
+>    `UNSCORED` — not the last good value, not an estimate, not a graceful
+>    degradation into a plausible lie.
+> 2. **Never alarm when we know why.** An elevated heart rate with motion is
+>    exercise, and saying so is more useful than an alert.
+
+---
+
+## Why this exists
+
+Every consumer wearable can tell you your heart rate went up. None of them will
+tell you when they don't know.
+
+Our headline finding is a base-rate problem the industry's own metrics hide.
+Measured on WESAD (leave-one-subject-out, 7 subjects):
+
+| | |
+|---|---|
+| Per-window specificity | **0.9679** |
+| Specificity actually needed for ~3 alarms/day | **0.99974** |
+| Gap | **123×** |
+
+A 96.8% specificity sounds excellent and produces **305 false alarms a day**.
+Worse, the *better* classifier produced *more* alarms (400/day), because a
+per-window metric is not the unit a wearer experiences. A 60-second sustain rule
+closes it to **2.3/day at unchanged sensitivity** — the fix was never a better
+model.
+
+That is why this is a training tool you opt into for ten minutes, not a monitor
+that watches you all day.
+
+---
+
+## Repository structure
+
+```
+src/vitalguard/        the library — every number on screen comes through here
+  schema.py            the 14-field row contract, shared with the firmware
+  quality.py           the signal-quality gate (SSQI, perfusion, flatline)
+  gate.py              trusted / degraded / unscored, and why
+  hr.py                heart-rate estimation with a two-estimator disagreement rule
+  baseline.py          the person's own resting reference, learned not assumed
+  features.py          RMSSD, SDNN, pNN50, EDA peaks, gsr_sigma
+  scorer.py            NORMAL / EXERTION / AROUSAL / UNEXPLAINED — rules, explainable
+  behaviour.py         what you DID while deciding: latency, doubt, switching
+  camera.py            observable face geometry from a phone. Never emotion.
+  bridge.py            the one place all three channels meet on one clock
+  wesad.py, synth.py, replay.py
+
+firmware/src/main.cpp  ESP32 recorder. 100 Hz, dual-core, boot self-test
+game/                  "The Gate" — the test itself. Zero dependencies, runs offline
+  index.html           the game
+  questions.json       the question set
+models/                YuNet face detector, vendored (works with no network)
+docs/                  ARCHITECTURE · DECISIONS · FIRMWARE_CONTRACT · PITCH
+tests/                 153 tests
+```
+
+---
 
 ## Run it
 
+No hardware needed — the whole system rehearses on synthetic data.
+
 ```bash
-cd ~/vitalguard
-PYTHONPATH=src ./venv/bin/python -m pytest -q      # 43 passed
-PYTHONPATH=src ./venv/bin/python report_gate.py    # what the gate concludes
-PYTHONPATH=src ./venv/bin/python calibrate.py     # the measured thresholds
+python -m venv venv && ./venv/bin/pip install -r requirements.txt
+
+# the test suite
+PYTHONPATH=src ./venv/bin/python -m pytest -q                # 153 passed
+
+# the full experience: pipeline + game + phone camera
+PYTHONPATH=src ./venv/bin/python live.py \
+    --synth rest --calibrate-synth rest --bridge --camera <phone-url>
+# then open http://127.0.0.1:8765/index.html
 ```
 
 `PYTHONPATH=src` is required — there is no installed package.
 
-### The live demo
+**The phone is the camera.** Any MJPEG source works (we use IP Webcam). Check it
+before trusting it:
 
 ```bash
-# no hardware — rehearse the whole thing
-PYTHONPATH=src ./venv/bin/python live.py --calibrate-synth rest --synth corrupted
-PYTHONPATH=src ./venv/bin/python live.py --calibrate-synth rest --synth unexplained
-
-# on the device -- rows go up, the verdict comes back down to the OLED
-cd firmware && pio run -t upload && cd ..
-PYTHONPATH=src ./venv/bin/python live.py --calibrate data/rest.csv \
-    --serial /dev/ttyUSB0 --save data/run.csv
+./venv/bin/python camcheck.py http://<phone-ip>:8080/video
 ```
 
-**The device displays a conclusion it did not reach.** Raw rows go up the
-serial line at 230400; the laptop runs the same gate/scorer the test suite
-covers; one line comes back and the OLED paints it. Reimplementing the gate in
-C would create a second source of truth for the one decision the whole product
-rests on, and the firmware copy would have no tests to keep it honest. The
-honest cost, stated on stage rather than hidden: **untethered, this device
-records but cannot score.** That is Phase 4.
+---
 
-A verdict older than 3 s expires and the display falls back to recorder
-status — a stale verdict shown as current is the exact failure the product
-exists to refuse, and the display is not exempt from its own thesis.
+## How the three channels stay honest
 
-**Calibration is separate and deliberate, and this was a real bug.** Run
-without `--calibrate` and the baseline learns from whatever is streaming, so
-an episode that starts before calibration finishes teaches the model that
-111 bpm is this person's resting rate and then reports it as NORMAL. A wearer
-straps the device on at an arbitrary moment; "learn from whatever you see
-first" makes the device most wrong exactly when they are unwell.
-`--save-baseline` / `--load-baseline` persist it across restarts.
+**Physiology** — PPG, ECG, GSR and motion at 100 Hz from the ESP32.
 
-## What exists (Phase 0)
+**Behaviour** — how long before you touched an option, how long you sat on it
+before committing (*the doubt window*), whether you went back on yourself.
 
-| File | Role |
-|---|---|
-| `src/vitalguard/schema.py` | **The record format. One source of truth.** Firmware writes it, everything reads it. |
-| `src/vitalguard/synth.py` | Five synthetic scenarios, so every layer is testable before hardware. |
-| `src/vitalguard/replay.py` | Recording → windows. The window is the unit of analysis. |
-| `docs/FIRMWARE_CONTRACT.md` | **For Sujan.** Pin map, row format, the ADC2/WiFi trap. |
-| `docs/DECISIONS.md` | Decision ledger — every choice, its alternative, and why. |
-| `firmware/src/main.cpp` | The recorder. Dual-core: hard 100 Hz sampler on core 1, SD/OLED writer on core 0. |
-| `live.py` | **The demo.** Device → screen in real time, same pipeline as the tests. |
-| `coverage.py` | The honesty ledger: how often we were willing to show a number at all. |
+**Camera** — head motion, tilt, turning away, face distance. Geometry only.
 
-## The five scenarios
+Three rules make those safe to combine:
 
-| Scenario | HR | Motion | GSR | Correct verdict |
-|---|---|---|---|---|
-| `rest` | ~65 | low | flat | normal |
-| `exercise` | ~130 | **high** | rising | elevated, **explained** |
-| `stress` | ~95 | low | **rising** | elevated, arousal |
-| `unexplained` | ~110 | low | flat | **ALERT** ← the product |
-| `corrupted` | — | any | any | **UNSCORED**, never a number |
+**1. One clock, and it is audited, never assumed.**
+The game runs in a browser on `performance.now()`; the device runs on `millis()`.
+Every event carries *both* clocks, and the bridge reports the measured offset
+spread. A session that cannot prove alignment says so, and the report is then
+forbidden from laying the channels on one timeline.
 
-`exercise` and `unexplained` differ *only* in motion. `stress` and `unexplained`
-differ *only* in GSR. That is deliberate: if the scorer separates all five, the
-three-signal architecture is justified. If it separates them without GSR, the
-GSR is decoration and we should say so out loud.
+**2. Behaviour and camera never reach the scorer.**
+The test gets harder over time *by construction*, so every behaviour signal
+drifts by construction. A model given both would learn "slow answers = stress"
+and score **the clock** while appearing to score the body. Enforced by tests.
 
-## Phases
+**3. No metric may name a feeling.**
+Facial emotion recognition was proposed and rejected: the mapping from facial
+movement to emotion isn't consistent across people or contexts, and a contested
+black box inside an honesty-first system hands a judge the question that ends the
+pitch. A test scans every metric description for feeling-words and fails on one.
+`mouth_width_ratio` is a distance. "Smiling" would be an inference.
 
-| Phase | Owner | What | Status |
-|---|---|---|---|
-| 0 | Abhi | Repo, record schema, replay harness, synthetic data | ✅ **done** |
-| 1a | Abhi | Firmware: sensors → timestamped CSV. Dumb, no logic. | ✅ **written, compiles, untested on hardware** |
-| 1b | Abhi | Signal Quality Gate (SSQI + perfusion + accel + lead-off) | ✅ **done** |
-| 2 | Both | Collect own labelled session (button = "exercising now") | blocked on 1a |
-| 3 | Abhi | Personal Baseline + Severity Scorer, rule-based first | blocked on 2 |
-| 4 | Both | On-device inference → OLED + buzzer | OLED + buzzer ✅ **live, driven over serial**; on-device inference not started |
-| 5 | Both | Dashboard + demo script | |
+---
 
-## Measured results
+## What is real, and what is not
 
-**PPG heart rate vs chest-ECG ground truth — WESAD, 7 subjects (S2–S8), gate-passing
-windows only, `WESAD_E4` profile.**
+This section is the point of the project. We would rather lose marks than
+overstate a number.
 
-| | |
-|---|---|
-| MAE | **3.22 bpm** |
-| Median error | **1.60 bpm** |
-| Within 5 bpm | 84.4% |
-| Within 10 bpm | 94.0% |
-| Worst single subject | 4.65 bpm |
-| n | 2,517 windows |
+**Real, measured:**
+- HR **3.22 bpm MAE** vs chest ECG at **88.1% coverage** (WESAD S2–S4, 3,794 windows)
+- Learned scorer beats rules leave-one-subject-out (F1 **0.67** vs **0.41**)
+- `gsr_sigma` is the top feature; 90/100 stress windows attributed AROUSAL
+- 60 s sustain: 305 → 2.3 alarms/day at unchanged sensitivity
+- Phone camera: 95.7% face detection over 553 frames, clocks aligned to 144 ms
 
-**Coverage — WESAD, 3 subjects (S2–S4), 3,794 windows, `WESAD_E4` profile.**
+**Not real yet, and we will say so on stage:**
+- **No recording from our own hardware.** The I2C bus is being rewired; every
+  threshold is provisional until we measure a real body.
+- **The EXERTION branch is unvalidated.** WESAD is a seated study with no
+  exercise condition. It works on synthetic data we wrote ourselves.
+- **`EARCLIP_MAX30102` is `None`** on purpose. There is no honest way to guess a
+  shipping threshold, and a placeholder would get quoted.
+- **rPPG (heart rate from the face) is parked.** It ran, returned 90 bpm, and the
+  spectral peak was 3.7% of the band — barely above noise. We are not shipping a
+  number we don't trust; that would contradict the entire thesis.
+- Episode-level detection rate is not yet measured.
 
-| | |
-|---|---|
-| Showed a number | **88.1%** (2,652 trusted + 692 degraded) |
-| Refused | 11.9% — all "pulse waveform destroyed by artifact" |
+---
 
-This is the metric no consumer wearable reports, because every one of them
-answers 100% by construction — it always shows something, so the question is
-never asked and the accuracy figure on the box has no denominator. **88.1%
-coverage at 3.22 bpm MAE** is a claim with a denominator. It also makes the
-refusal falsifiable in the other direction: a gate quietly tuned until it
-refuses everything would post a perfect error rate and be caught here in one
-line. `PYTHONPATH=src ./venv/bin/python coverage.py S2 S3 S4`
+## Hardware
 
-**⚠ Gate false-confirm rate — 0 in 306. NOT AN INDEPENDENT RESULT.**
-The adversarial windows and the detector that rejects them were written by the
-same hand, against the same assumptions, on the same afternoon. A generator
-cannot audit the detector it was written alongside. The number is reported
-because it was measured, and it is worth exactly what a self-graded exam is
-worth — it belongs in the repo, not in the pitch. The only honest version of
-this claim comes from adversarial windows somebody else recorded.
+ESP32 DOIT 30-pin · MAX30102 (PPG) · AD8232 (ECG) · GSR finger clip ·
+MPU6050 (motion) · SSD1306 OLED · buzzer. Single 3.3 V rail, no 5 V anywhere.
 
-### Severity scorer — WESAD, 5 subjects (S2–S6), 1,729 scored windows
+Authoritative pin map and wiring order: **`docs/FIRMWARE_CONTRACT.md`**.
 
-| true state | n | normal | exertion | arousal | unexplained | alarms |
-|---|---|---|---|---|---|---|
-| rest | 818 | 731 | 0 | 32 | 55 | 14 (1.7%) |
-| meditation | 529 | 480 | 0 | 30 | 19 | 4 (0.8%) |
-| amusement | 212 | 186 | 0 | 17 | 9 | 0 (0.0%) |
-| stress | 170 | 57 | 13 | 90 | 10 | 31 (18.2%) |
+The device shows a verdict it did not compute — rows go up the serial line at
+230400, the laptop runs the same gate the tests cover, one line comes back and
+the OLED paints it. Reimplementing the gate in C would create a second source of
+truth for the one decision the product rests on. Stated cost: **untethered, the
+device records but cannot score.**
 
-**False alarms on non-stress states: 18 in 1,559 windows (1.15%).**
-**Stress recognised as elevated: 113/170 (66.5%)** — a third of stress windows are missed.
+---
 
-#### Ablation: does the GSR sensor earn its place?
+## Team
 
-| configuration | false alarms (quiet states) | stress alarms |
-|---|---|---|
-| HR + motion + GSR | 18 / 1559 = **1.15%** | 31 / 170 = 18.2% |
-| HR + motion only | 26 / 1559 = **1.67%** | 44 / 170 = 25.9% |
-
-Removing GSR multiplies false alarms by **1.4×**. That is real but modest — smaller
-than the ablation was expected to show, and it is reported as measured rather than
-framed up.
-
-The stronger case for the third sensor is attribution, not alarm count: **of the
-100 detected stress windows that were not exertion, 90 were correctly labelled
-AROUSAL rather than UNEXPLAINED.** Without GSR all 100 present as unexplained
-alarms. Reducing false alarms is what GSR does second; explaining *why* the heart
-rate rose is what it does first, and that is the actual product claim.
-
-#### ⚠ What this data cannot tell us
-
-- **The EXERTION branch is unvalidated on real data.** WESAD is a seated lab
-  study; motion is 0.004–0.022 g in every state. Only our own recordings can
-  test it.
-- **WESAD's amusement condition barely raises heart rate** (+0.03σ, same as
-  rest), so it does not meaningfully test arousal-without-stress at an
-  *elevated* rate. The scorer scores well on amusement for the wrong reason.
-
-### ⚠ Known limitation: accuracy collapses under stress
-
-| state | MAE | median | n |
-|---|---|---|---|
-| rest | 2.25 | 1.24 | 1163 |
-| amusement | 2.47 | 1.40 | 342 |
-| meditation | 2.98 | 1.92 | 783 |
-| **stress** | **10.01** | **5.86** | 229 |
-
-Stress is **4× worse than every other state, on windows that PASSED the gate.**
-Peripheral vasoconstriction shunts blood from the extremities, so wrist PPG
-degrades exactly when the reading matters most — and our quality gate does not
-currently detect that degradation. The estimator-agreement check catches part of
-it (agreement falls to 29% under stress) but the windows that survive are still
-four times less accurate.
-
-This is stated rather than hidden because it is the single most important
-weakness in the system: the product exists to catch physiological events, and
-its measurement is least reliable during one. Two mitigations, neither yet
-validated:
-
-  - the **ear clip** is far better perfused than the wrist, which is the
-    placement already chosen for the hardware — but WESAD is wrist data, so
-    this remains a hypothesis until our own recordings exist
-  - stress-state readings could be forced to DEGRADED by policy
-
-## Learned scorer vs rules — leave-one-subject-out, all 15 WESAD subjects
-
-Both arms on identical feature vectors and identical splits. Every number is
-from a subject the scorer never saw.
-
-| | sensitivity | specificity | F1 | worst-subject sensitivity |
-|---|---|---|---|---|
-| rules | 0.44 | 0.930 | 0.41 | **0.00** |
-| learned model | **0.68** | **0.965** | **0.67** | 0.22 |
-
-**Decision D8 is falsified.** It assumed rules would hold unless a model clearly
-beat them. A model clearly beats them, and the rules fail outright on 3 of 15
-subjects (sensitivity 0.00, 0.04, 0.04) — a failure completely hidden by the
-earlier pooled 5-subject figure.
-
-`gsr_sigma` is the **most important single feature**, ahead of heart-rate
-deviation. That is a far stronger justification for the third sensor than the
-1.4x ablation reported earlier. HRV features (RMSSD, SDNN, pNN50) contribute
-almost nothing at 10-second windows — as predicted in `features.py`, the window
-is too short for them to mean much.
-
-### The alarm rate was never a classifier problem
-
-Per-window alarming, out-of-fold:
-
-| | alarms / 16 h day | worst subject |
-|---|---|---|
-| rules | 305 | 2235 |
-| learned model | **400** | 2717 |
-
-The *better* classifier produced *more* alarms. Higher sensitivity means more
-firing. Requiring continuous evidence fixes it almost for free:
-
-| sustain required | alarms/day | per-window sensitivity |
-|---|---|---|
-| 5 s | 46.8 | 0.68 |
-| 15 s | 15.0 | 0.68 |
-| **60 s** | **2.3** | **0.68** |
-| 120 s | 0.0 | 0.68 (never fires) |
-
-Real physiological episodes last minutes; false positives are isolated. So
-duration costs essentially nothing and buys a 20x reduction.
-
-**The number worth remembering:**
-
-```
-per-window specificity achieved   0.9679
-needed for ~3 alarms/day          0.99974   -> a 123x reduction
-```
-
-96.8% specificity sounds excellent and is two orders of magnitude short of
-usable. Continuous monitoring has a base-rate problem that per-window metrics
-hide, which is why every alarm figure here is also quoted per day.
-
-⚠ **Not yet measured: episode-level detection rate.** The sensitivity column is
-per-window classifier sensitivity and is independent of the notification
-policy. At 120 s sustain the system fires zero alarms while still showing 0.68
-— which proves the column does not measure whether real episodes get caught.
-Until that is measured, 60 s is an operating point chosen on alarm rate alone.
-
-## Honesty rules for any number we report
-
-Carried over from Residual Zero, because they were right there:
-
-- **Never quote a metric without its scope.** Synthetic-generator results and
-  real-recording results are different claims and get labelled as such.
-- **Never report a zero rate as `0.00%`.** Use the one-sided rule-of-three
-  upper bound with its denominator: *"0 in 340, below 0.88% at 95% confidence."*
-- **Always give the denominator.**
+**Team BioForge** — Recursion Edition II
+Abhinav Pallath · Sujan · Adesh
