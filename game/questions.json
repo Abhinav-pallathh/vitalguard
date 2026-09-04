@@ -4,135 +4,30 @@
   "act": 1,
   "kind": "general",
   "seconds": null,
-  "prompt": "You have four matches and one candle. Three matches are damp. How many lights do you get?",
+  "prompt": "You hold four matches for one candle. Three are damp. How many flames do you get?",
   "options": [
-   {
-    "key": "A",
-    "text": "One"
-   },
-   {
-    "key": "B",
-    "text": "Three"
-   },
-   {
-    "key": "C",
-    "text": "Four"
-   },
-   {
-    "key": "D",
-    "text": "None"
-   }
+   { "key": "A", "text": "One" },
+   { "key": "B", "text": "Three" },
+   { "key": "C", "text": "Four" },
+   { "key": "D", "text": "None" }
   ],
   "answer": "A",
-  "rationale": "Only the dry match lights. B counts the damp ones."
+  "rationale": "Only the dry match can light the candle. B mistakes the damp matches for successes."
  },
  {
   "id": "a1q2",
   "act": 1,
   "kind": "general",
   "seconds": null,
-  "prompt": "A shelf holds six tins. You take away four. How many do you have?",
+  "prompt": "A shelf holds six ration tins. You take away four. How many are in your hand?",
   "options": [
-   {
-    "key": "A",
-    "text": "Two"
-   },
-   {
-    "key": "B",
-    "text": "Four"
-   },
-   {
-    "key": "C",
-    "text": "Six"
-   },
-   {
-    "key": "D",
-    "text": "Ten"
-   }
+   { "key": "A", "text": "Two" },
+   { "key": "B", "text": "Six" },
+   { "key": "C", "text": "Four" },
+   { "key": "D", "text": "Ten" }
   ],
-  "answer": "B",
-  "rationale": "You have what you took. A answers what is left."
- },
- {
-  "id": "a1q3",
-  "act": 1,
-  "kind": "general",
-  "seconds": null,
-  "prompt": "Practice 3: how many sides does a square have?",
-  "options": [
-   {
-    "key": "A",
-    "text": "Three"
-   },
-   {
-    "key": "B",
-    "text": "Four"
-   },
-   {
-    "key": "C",
-    "text": "Five"
-   },
-   {
-    "key": "D",
-    "text": "Six"
-   }
-  ],
-  "answer": "B",
-  "rationale": "practice"
- },
- {
-  "id": "a1q4",
-  "act": 1,
-  "kind": "general",
-  "seconds": null,
-  "prompt": "Practice 4: how many sides does a square have?",
-  "options": [
-   {
-    "key": "A",
-    "text": "Three"
-   },
-   {
-    "key": "B",
-    "text": "Four"
-   },
-   {
-    "key": "C",
-    "text": "Five"
-   },
-   {
-    "key": "D",
-    "text": "Six"
-   }
-  ],
-  "answer": "B",
-  "rationale": "practice"
- },
- {
-  "id": "a1q5",
-  "act": 1,
-  "kind": "general",
-  "seconds": null,
-  "prompt": "Practice 5: how many sides does a square have?",
-  "options": [
-   {
-    "key": "A",
-    "text": "Three"
-   },
-   {
-    "key": "B",
-    "text": "Four"
-   },
-   {
-    "key": "C",
-    "text": "Five"
-   },
-   {
-    "key": "D",
-    "text": "Six"
-   }
-  ],
-  "answer": "B",
-  "rationale": "practice"
+  "answer": "C",
+  "rationale": "You hold what you took, not what remains on the shelf. A answers the wrong question."
  },
  {
   "id": "a2q1",
@@ -141,159 +36,267 @@
   "seconds": 22,
   "prompt": "Rations last twelve days for four people. Two more arrive. How many days now?",
   "options": [
-   {
-    "key": "A",
-    "text": "Six days"
-   },
-   {
-    "key": "B",
-    "text": "Eight days"
-   },
-   {
-    "key": "C",
-    "text": "Nine days"
-   },
-   {
-    "key": "D",
-    "text": "Ten days"
-   }
+   { "key": "A", "text": "Six days" },
+   { "key": "B", "text": "Eight days" },
+   { "key": "C", "text": "Nine days" },
+   { "key": "D", "text": "Ten days" }
   ],
   "answer": "B",
-  "rationale": "48 person-days over six people. A halves for double the people."
+  "rationale": "Forty-eight person-days spread over six people gives eight. A wrongly halves for double the people."
  },
  {
   "id": "a2q2",
+  "act": 2,
+  "kind": "general",
+  "seconds": 22,
+  "prompt": "A watch loses three minutes every hour. Set correctly at noon, what does it show at four?",
+  "options": [
+   { "key": "A", "text": "3:52" },
+   { "key": "B", "text": "3:57" },
+   { "key": "C", "text": "4:00" },
+   { "key": "D", "text": "3:48" }
+  ],
+  "answer": "D",
+  "rationale": "Four hours times three lost minutes is twelve minutes behind: 3:48. C forgets the watch loses time at all."
+ },
+ {
+  "id": "a2q3",
+  "act": 2,
+  "kind": "general",
+  "seconds": 22,
+  "prompt": "A sign reads: if the tank is full, the light turns green. The light is green. Is the tank full?",
+  "options": [
+   { "key": "A", "text": "Not necessarily, something else could cause it" },
+   { "key": "B", "text": "Yes, it must be full" },
+   { "key": "C", "text": "No, it cannot be full" },
+   { "key": "D", "text": "Yes, but only briefly" }
+  ],
+  "answer": "A",
+  "rationale": "The rule only says full implies green, not the reverse. B commits the classic error of affirming the consequent."
+ },
+ {
+  "id": "a2q4",
+  "act": 2,
+  "kind": "general",
+  "seconds": 22,
+  "prompt": "A candle burns down one centimetre every twenty minutes. It is eight centimetres tall. Roughly how long until it dies?",
+  "options": [
+   { "key": "A", "text": "About forty minutes" },
+   { "key": "B", "text": "About ninety minutes" },
+   { "key": "C", "text": "Nearly three hours" },
+   { "key": "D", "text": "About two hours" }
+  ],
+  "answer": "C",
+  "rationale": "Eight centimetres at one per twenty minutes is a hundred sixty minutes, nearly three hours. D underestimates by forty minutes."
+ },
+ {
+  "id": "a2q5",
   "act": 2,
   "kind": "career",
   "seconds": 22,
   "prompt": "You find a fault in work that shipped last week. Nobody has noticed it yet.",
   "options": [
-   {
-    "key": "A",
-    "text": "Tell the team today"
-   },
-   {
-    "key": "B",
-    "text": "Fix it quietly first"
-   },
-   {
-    "key": "C",
-    "text": "Log it and wait"
-   },
-   {
-    "key": "D",
-    "text": "Raise it at review"
-   }
+   { "key": "A", "text": "Tell the team today" },
+   { "key": "B", "text": "Fix it quietly first" },
+   { "key": "C", "text": "Log it and wait" },
+   { "key": "D", "text": "Raise it at review" }
   ],
   "answer": null,
-  "rationale": "Trades speed, standing, honesty and cover differently."
+  "rationale": "Trades speed, standing, honesty, and cover, differently for each choice."
+ },
+ {
+  "id": "a2q6",
+  "act": 2,
+  "kind": "career",
+  "seconds": 22,
+  "prompt": "A friend on your team is behind, and it is starting to show in results only you can see.",
+  "options": [
+   { "key": "A", "text": "Cover the gap yourself" },
+   { "key": "B", "text": "Tell the lead what you see" },
+   { "key": "C", "text": "Confront your friend first" },
+   { "key": "D", "text": "Let the results speak alone" }
+  ],
+  "answer": null,
+  "rationale": "Costs your time, the friendship, an ally, or the deadline, depending which you choose."
  },
  {
   "id": "a3q1",
   "act": 3,
   "kind": "general",
   "seconds": 15,
-  "prompt": "Two of three water cans are contaminated. You test one at random. It is clean. Next one?",
+  "prompt": "Two of three water cans are contaminated. You test one at random; it is clean. Chance the next one is also clean?",
   "options": [
-   {
-    "key": "A",
-    "text": "One in two"
-   },
-   {
-    "key": "B",
-    "text": "One in three"
-   },
-   {
-    "key": "C",
-    "text": "One quarter"
-   },
-   {
-    "key": "D",
-    "text": "Zero"
-   }
+   { "key": "A", "text": "One in two" },
+   { "key": "B", "text": "One in three" },
+   { "key": "C", "text": "One quarter" },
+   { "key": "D", "text": "Zero" }
   ],
   "answer": "D",
-  "rationale": "One clean can existed; you found it. The rest are contaminated."
+  "rationale": "Only one clean can existed, and you already found it. The rest must be contaminated."
  },
  {
   "id": "a3q2",
+  "act": 3,
+  "kind": "general",
+  "seconds": 15,
+  "prompt": "One well in a hundred is poisoned. A test that is ninety percent accurate comes back positive on yours. Is it poisoned?",
+  "options": [
+   { "key": "A", "text": "Almost certainly poisoned" },
+   { "key": "B", "text": "Still probably clean, near one in twelve" },
+   { "key": "C", "text": "Slightly more likely than clean" },
+   { "key": "D", "text": "No better than a coin flip" }
+  ],
+  "answer": "B",
+  "rationale": "False positives from the ninety-nine clean wells outnumber true positives. A ignores how rare poisoning actually is."
+ },
+ {
+  "id": "a3q3",
+  "act": 3,
+  "kind": "general",
+  "seconds": 15,
+  "prompt": "Next in the sequence: 3, 7, 15, 31, __?",
+  "options": [
+   { "key": "A", "text": "47" },
+   { "key": "B", "text": "62" },
+   { "key": "C", "text": "63" },
+   { "key": "D", "text": "71" }
+  ],
+  "answer": "C",
+  "rationale": "Each term doubles the last and adds one: 31 times two plus one is 63. B just doubles and forgets the plus one."
+ },
+ {
+  "id": "a3q4",
+  "act": 3,
+  "kind": "general",
+  "seconds": 15,
+  "prompt": "A courier sets out, travels six hours, rests one, then travels three more, ending the journey at six PM. When did he set out?",
+  "options": [
+   { "key": "A", "text": "8 AM" },
+   { "key": "B", "text": "7 AM" },
+   { "key": "C", "text": "9 AM" },
+   { "key": "D", "text": "6 AM" }
+  ],
+  "answer": "A",
+  "rationale": "Six plus one plus three is ten hours before six PM, so eight AM. D miscounts the rest as travel time."
+ },
+ {
+  "id": "a3q5",
   "act": 3,
   "kind": "career",
   "seconds": 15,
   "prompt": "An offer arrives that changes your life. Your team ships in three weeks without you.",
   "options": [
-   {
-    "key": "A",
-    "text": "Take it, leave now"
-   },
-   {
-    "key": "B",
-    "text": "Take it, delay start"
-   },
-   {
-    "key": "C",
-    "text": "Stay through the ship"
-   },
-   {
-    "key": "D",
-    "text": "Decline and say why"
-   }
+   { "key": "A", "text": "Take it, leave now" },
+   { "key": "B", "text": "Take it, delay start" },
+   { "key": "C", "text": "Stay through the ship" },
+   { "key": "D", "text": "Decline and say why" }
   ],
   "answer": null,
-  "rationale": "Costs money, goodwill, opportunity or the offer itself."
+  "rationale": "Costs money, goodwill, opportunity, or the offer itself, depending which you take."
+ },
+ {
+  "id": "a3q6",
+  "act": 3,
+  "kind": "career",
+  "seconds": 15,
+  "prompt": "You are asked to ship a feature you know is not ready, before anyone else can check it.",
+  "options": [
+   { "key": "A", "text": "Ship it and flag the risk" },
+   { "key": "B", "text": "Ship it and stay silent" },
+   { "key": "C", "text": "Refuse and miss the date" },
+   { "key": "D", "text": "Delay quietly without asking" }
+  ],
+  "answer": null,
+  "rationale": "Protects your name, the deadline, the team's trust, or your standing, never all four at once."
  },
  {
   "id": "a4q1",
   "act": 4,
   "kind": "general",
   "seconds": 9,
-  "prompt": "Next: 2, 6, 12, 20, __ ?",
+  "prompt": "Next: 2, 6, 12, 20, __?",
   "options": [
-   {
-    "key": "A",
-    "text": "28"
-   },
-   {
-    "key": "B",
-    "text": "30"
-   },
-   {
-    "key": "C",
-    "text": "32"
-   },
-   {
-    "key": "D",
-    "text": "36"
-   }
+   { "key": "A", "text": "28" },
+   { "key": "B", "text": "30" },
+   { "key": "C", "text": "32" },
+   { "key": "D", "text": "36" }
   ],
   "answer": "B",
-  "rationale": "n(n+1). A is the trap for a constant difference of 8."
+  "rationale": "Each term is n times n plus one: five times six is thirty. A assumes a constant difference of eight."
  },
  {
   "id": "a4q2",
+  "act": 4,
+  "kind": "general",
+  "seconds": 9,
+  "prompt": "A guard checks a gate every seven minutes, another every eleven. Both just checked together. Minutes until they align again?",
+  "options": [
+   { "key": "A", "text": "18" },
+   { "key": "B", "text": "44" },
+   { "key": "C", "text": "63" },
+   { "key": "D", "text": "77" }
+  ],
+  "answer": "D",
+  "rationale": "The next joint check is the lowest common multiple of seven and eleven, which is seventy-seven. B guesses a sum instead."
+ },
+ {
+  "id": "a4q3",
+  "act": 4,
+  "kind": "general",
+  "seconds": 9,
+  "prompt": "Next: 2, 3, 5, 9, 17, __?",
+  "options": [
+   { "key": "A", "text": "25" },
+   { "key": "B", "text": "29" },
+   { "key": "C", "text": "33" },
+   { "key": "D", "text": "31" }
+  ],
+  "answer": "C",
+  "rationale": "Each term doubles the last and subtracts one: seventeen times two minus one is thirty-three. D is one short."
+ },
+ {
+  "id": "a4q4",
   "act": 4,
   "kind": "career",
   "seconds": 9,
   "prompt": "Your manager presents your work as theirs, to the people who decide your promotion.",
   "options": [
-   {
-    "key": "A",
-    "text": "Correct them in the room, now"
-   },
-   {
-    "key": "B",
-    "text": "Raise it with them privately after"
-   },
-   {
-    "key": "C",
-    "text": "Say nothing and build the record"
-   },
-   {
-    "key": "D",
-    "text": "Take it to their manager instead"
-   }
+   { "key": "A", "text": "Correct them in the room, now" },
+   { "key": "B", "text": "Raise it with them privately after" },
+   { "key": "C", "text": "Say nothing and build the record" },
+   { "key": "D", "text": "Take it to their manager instead" }
   ],
   "answer": null,
-  "rationale": "Trades standing, relationship, time or safety."
+  "rationale": "Trades standing, the relationship, time, or safety, and none of the four is free."
+ },
+ {
+  "id": "a4q5",
+  "act": 4,
+  "kind": "career",
+  "seconds": 9,
+  "prompt": "You are good at work nobody notices. A worse fit for you would finally get you seen.",
+  "options": [
+   { "key": "A", "text": "Take the visible role now" },
+   { "key": "B", "text": "Stay and master your craft" },
+   { "key": "C", "text": "Ask for both at once" },
+   { "key": "D", "text": "Wait for the right one" }
+  ],
+  "answer": null,
+  "rationale": "Trades recognition, mastery, patience, or a chance that may never come again."
+ },
+ {
+  "id": "a4q6",
+  "act": 4,
+  "kind": "career",
+  "seconds": 9,
+  "prompt": "Leaving now costs you nothing arranged. Staying costs you another year you already regret.",
+  "options": [
+   { "key": "A", "text": "Leave today, nothing arranged" },
+   { "key": "B", "text": "Stay a year, keep looking" },
+   { "key": "C", "text": "Stay and stop looking" },
+   { "key": "D", "text": "Leave in a month, prepared" }
+  ],
+  "answer": null,
+  "rationale": "Each trades certainty against time differently. None of the four choices costs nothing."
  }
 ]
