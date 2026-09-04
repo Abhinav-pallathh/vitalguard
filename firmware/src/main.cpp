@@ -474,22 +474,28 @@ void setup() {
                 has_ppg, has_imu, has_oled, has_sd, has_sd ? logname : "-");
   paint(false);
 
-  // Refuse to record without the two sensors every downstream layer requires.
-  // Recording anyway would produce a file that LOOKS valid -- correct header,
-  // correct row count, correct sample rate -- and is evidence about nothing.
-  if (!has_ppg || !has_imu) {
-    Serial.println("REFUSING to record: PPG and IMU are both required.");
+  // Refuse to record without PPG -- there is no honest row without a pulse
+  // channel. The IMU is deliberately NOT gated here (2026-09-04, Abhi's call
+  // for the hackathon run: the MPU6050 is still being rewired and is being
+  // treated as decoration for now). A missing IMU already degrades honestly
+  // without this gate -- sampler_task writes NaN, never a fabricated 0, into
+  // ax/ay/az/gx/gy/gz (see the comment there), so nothing downstream can read
+  // "still" from a sensor that was never there. Re-add `|| !has_imu` once the
+  // rewire is done; motion is still load-bearing for telling stress from
+  // exercise, this is a deliberate temporary relaxation, not a redesign.
+  if (!has_ppg) {
+    Serial.println("REFUSING to record: PPG is required.");
     if (has_oled) {
       oled.clearDisplay(); oled.setTextSize(1); oled.setCursor(0, 0);
       oled.println("NOT RECORDING");
-      oled.printf("PPG %s\n", has_ppg ? "ok" : "MISSING");
-      oled.printf("IMU %s\n", has_imu ? "ok" : "MISSING");
+      oled.println("PPG MISSING");
       oled.println("check I2C wiring");
       oled.display();
     }
     for (;;) { digitalWrite(PIN_BUZZER, HIGH); delay(60);
                digitalWrite(PIN_BUZZER, LOW);  delay(2000); }
   }
+  if (!has_imu) Serial.println("NOTE: recording WITHOUT the IMU -- motion fields will be NaN.");
 
   xTaskCreatePinnedToCore(sampler_task, "sampler", 4096, nullptr,
                           configMAX_PRIORITIES - 1, nullptr, 1);
