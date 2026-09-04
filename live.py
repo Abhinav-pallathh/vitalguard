@@ -61,7 +61,19 @@ class SerialSource:
 
     def __init__(self, port: str, baud: int = 230400) -> None:
         import serial                          # pyserial, imported lazily
-        self._sp = serial.Serial(port, baud, timeout=2)
+        # pyserial asserts DTR+RTS high by default on a plain open(), which
+        # the ESP32 auto-reset circuit reads as EN=LOW + GPIO0=LOW -- that is
+        # the bootloader-entry pulse, not a normal boot. A "plain" open was
+        # silently priming download mode instead of just connecting, so the
+        # device never got past the ROM banner. Constructing without
+        # auto-opening and forcing both lines low first lets it boot normally.
+        self._sp = serial.Serial()
+        self._sp.port = port
+        self._sp.baudrate = baud
+        self._sp.timeout = 2
+        self._sp.dtr = False
+        self._sp.rts = False
+        self._sp.open()
         self.bad = 0
 
     def __iter__(self):
