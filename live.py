@@ -59,7 +59,7 @@ class SerialSource:
     the firmware copy would have no test suite to keep it honest.
     """
 
-    def __init__(self, port: str, baud: int = 115200) -> None:  # TEMP local: this board/cable corrupts at 230400, see firmware_arduino/README.md
+    def __init__(self, port: str, baud: int = 230400) -> None:
         import serial                          # pyserial, imported lazily
         # pyserial asserts DTR+RTS high by default on a plain open(), which
         # the ESP32 auto-reset circuit reads as EN=LOW + GPIO0=LOW -- that is
