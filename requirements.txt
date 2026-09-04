@@ -1,3 +1,13 @@
 numpy>=2.0
 scipy>=1.14
 pytest>=8.0
+
+# The camera channel (camera.py, camcheck.py) and the shipped face detector.
+opencv-python-headless>=4.9
+
+# The learned channel (model.py) -- loads models/arousal_v1.joblib.
+joblib>=1.4
+scikit-learn>=1.4
+
+# Firmware serial link (live.py talks to the ESP32 over USB).
+pyserial>=3.5
