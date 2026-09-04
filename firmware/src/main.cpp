@@ -33,8 +33,6 @@
 #include <Wire.h>
 #include <SPI.h>
 #include <SD.h>
-#include <Adafruit_MPU6050.h>
-#include <Adafruit_Sensor.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include "MAX30105.h"
@@ -102,7 +100,6 @@ static volatile uint32_t g_written = 0;
 static bool has_ppg = false, has_imu = false, has_oled = false, has_sd = false;
 
 MAX30105        ppg;
-Adafruit_MPU6050 imu;
 Adafruit_SSD1306 oled(128, 64, &Wire, -1);
 File            logfile;
 static char     logname[24] = "";
@@ -110,6 +107,54 @@ static char     logname[24] = "";
 static bool i2c_present(uint8_t addr) {
   Wire.beginTransmission(addr);
   return Wire.endTransmission() == 0;
+}
+
+// --- IMU, talked to at the register level, not through Adafruit_MPU6050 ---
+//
+// The "MPU6050" on the real bench board is a mislabeled MPU6500: a direct
+// WHO_AM_I (reg 0x75) read returns 0x70, not the genuine part's 0x68.
+// Adafruit_MPU6050::begin() hard-checks that register and reports "not
+// found" on this exact chip -- which is why `has_imu` came back false on
+// real hardware even with the module correctly wired at 0x68. A common
+// GY-521 substitution; confirmed on the bench 2026-09-04, bypassed the same
+// night on real hardware (590 consecutive rows, exact 100 Hz) in
+// firmware_arduino/contract_firmware.ino. Both chips share the same basic
+// accel/gyro register map, so talking to it directly has zero MPU6050-
+// library dependency and works on either part.
+static const uint8_t MPU_ADDR = 0x68;
+// Scale factors match the ranges this file has always configured
+// (was: setAccelerometerRange(MPU6050_RANGE_4_G), setGyroRange(500_DEG)).
+static const float MPU_ACCEL_LSB_PER_G   = 8192.0f;  // AFS_SEL=1, +/-4g
+static const float MPU_GYRO_LSB_PER_DPS  = 65.5f;    // FS_SEL=1,  +/-500 dps
+
+static void mpu_write(uint8_t reg, uint8_t val) {
+  Wire.beginTransmission(MPU_ADDR);
+  Wire.write(reg);
+  Wire.write(val);
+  Wire.endTransmission();
+}
+
+// Same "never guess" rule as every other channel: returns false on any I2C
+// read failure and writes nothing, so the caller can write NaN rather than
+// carry a stale value forward.
+static bool mpu_read(float &ax, float &ay, float &az,
+                      float &gx, float &gy, float &gz) {
+  Wire.beginTransmission(MPU_ADDR);
+  Wire.write(0x3B);   // ACCEL_XOUT_H -- 14 bytes: accel(6) temp(2) gyro(6)
+  if (Wire.endTransmission(false) != 0) return false;
+  if (Wire.requestFrom((int)MPU_ADDR, 14) != 14) return false;
+
+  int16_t rax = (Wire.read() << 8) | Wire.read();
+  int16_t ray = (Wire.read() << 8) | Wire.read();
+  int16_t raz = (Wire.read() << 8) | Wire.read();
+  Wire.read(); Wire.read();   // temperature, unused
+  int16_t rgx = (Wire.read() << 8) | Wire.read();
+  int16_t rgy = (Wire.read() << 8) | Wire.read();
+  int16_t rgz = (Wire.read() << 8) | Wire.read();
+
+  ax = rax / MPU_ACCEL_LSB_PER_G;  ay = ray / MPU_ACCEL_LSB_PER_G;  az = raz / MPU_ACCEL_LSB_PER_G;
+  gx = rgx / MPU_GYRO_LSB_PER_DPS; gy = rgy / MPU_GYRO_LSB_PER_DPS; gz = rgz / MPU_GYRO_LSB_PER_DPS;
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -120,7 +165,6 @@ static void sampler_task(void *) {
   // long the loop body took, and a drifting sample rate silently corrupts
   // every frequency-domain measurement made downstream.
   uint32_t next = micros();
-  sensors_event_t a, g, temp;
 
   for (;;) {
     while ((int32_t)(micros() - next) < 0) { /* spin: this core has one job */ }
@@ -142,14 +186,7 @@ static void sampler_task(void *) {
       r.ppg_ir = r.ppg_red = 0;
     }
 
-    if (has_imu && imu.getEvent(&a, &g, &temp)) {
-      r.ax = a.acceleration.x / 9.80665f;   // m/s^2 -> g, schema says g
-      r.ay = a.acceleration.y / 9.80665f;
-      r.az = a.acceleration.z / 9.80665f;
-      r.gx = g.gyro.x * 57.2957795f;        // rad/s -> deg/s, schema says deg/s
-      r.gy = g.gyro.y * 57.2957795f;
-      r.gz = g.gyro.z * 57.2957795f;
-    } else {
+    if (!(has_imu && mpu_read(r.ax, r.ay, r.az, r.gx, r.gy, r.gz))) {
       // NaN, not 0. Zero acceleration is a CLAIM -- "the wearer is perfectly
       // still" -- and the severity scorer reads exactly that claim to decide
       // an elevated heart rate is UNEXPLAINED rather than exercise. A missing
@@ -357,17 +394,15 @@ static void self_test() {
   uint16_t gsr_lo = 4095, gsr_hi = 0, ecg_lo = 4095, ecg_hi = 0;
   float a_lo = 99, a_hi = -99;
   int lo_off = 0, n = 0;
-  sensors_event_t a, g, t;
 
   uint32_t end = millis() + 1000;
   while (millis() < end) {
     if (has_ppg) { ppg.check();
       if (ppg.available()) { uint32_t v = ppg.getFIFOIR();
         ir_lo = min(ir_lo, v); ir_hi = max(ir_hi, v); ppg.nextSample(); } }
-    if (has_imu && imu.getEvent(&a, &g, &t)) {
-      float m = sqrtf(a.acceleration.x*a.acceleration.x +
-                      a.acceleration.y*a.acceleration.y +
-                      a.acceleration.z*a.acceleration.z) / 9.80665f;
+    float ax, ay, az, gx, gy, gz;
+    if (has_imu && mpu_read(ax, ay, az, gx, gy, gz)) {
+      float m = sqrtf(ax*ax + ay*ay + az*az);
       a_lo = min(a_lo, m); a_hi = max(a_hi, m);
     }
     uint16_t gs = analogRead(PIN_GSR), ec = analogRead(PIN_ECG);
@@ -441,11 +476,17 @@ void setup() {
     // would race, and losing that race means writing a zero.
     ppg.setup(0x1F /*LED*/, 4 /*avg*/, 2 /*red+IR*/, 400 /*Hz*/, 411 /*us*/, 4096);
   }
-  has_imu = imu.begin(0x68, &Wire);
+  // Presence by ACK, not by Adafruit_MPU6050::begin()'s WHO_AM_I check --
+  // that check fails on this exact board (see the mpu_read comment above),
+  // and the address ACKs identically whether the die is a genuine MPU6050
+  // or the mislabeled MPU6500 actually on the bench.
+  has_imu = i2c_present(MPU_ADDR);
   if (has_imu) {
-    imu.setAccelerometerRange(MPU6050_RANGE_4_G);
-    imu.setGyroRange(MPU6050_RANGE_500_DEG);
-    imu.setFilterBandwidth(MPU6050_BAND_44_HZ);   // < 50 Hz Nyquist at 100 Hz
+    mpu_write(0x6B, 0x00);   // PWR_MGMT_1: clear sleep, wake the part
+    delay(50);
+    mpu_write(0x1C, 0x08);   // ACCEL_CONFIG: AFS_SEL=1 -> +/-4g
+    mpu_write(0x1B, 0x08);   // GYRO_CONFIG:  FS_SEL=1  -> +/-500 dps
+    mpu_write(0x1A, 0x03);   // CONFIG: DLPF_CFG=3 -> ~44 Hz, < 50 Hz Nyquist at 100 Hz
   }
   has_oled = i2c_present(0x3C) && oled.begin(SSD1306_SWITCHCAPVCC, 0x3C);
 
@@ -476,13 +517,15 @@ void setup() {
 
   // Refuse to record without PPG -- there is no honest row without a pulse
   // channel. The IMU is deliberately NOT gated here (2026-09-04, Abhi's call
-  // for the hackathon run: the MPU6050 is still being rewired and is being
-  // treated as decoration for now). A missing IMU already degrades honestly
-  // without this gate -- sampler_task writes NaN, never a fabricated 0, into
-  // ax/ay/az/gx/gy/gz (see the comment there), so nothing downstream can read
-  // "still" from a sensor that was never there. Re-add `|| !has_imu` once the
-  // rewire is done; motion is still load-bearing for telling stress from
-  // exercise, this is a deliberate temporary relaxation, not a redesign.
+  // for the hackathon run, made when the MPU6050 was being treated as
+  // decoration). UPDATE 2026-09-04 (later that night): the IMU now reads for
+  // real -- see the mpu_read comment above -- so has_imu should come back
+  // true on the actual bench board and this gate is mostly moot in practice.
+  // Left un-tightened on purpose: if a *different* board or a genuinely dead
+  // IMU shows up on stage, PPG-only is still a better failure mode than a
+  // buzzer loop that refuses to record anything. A missing IMU still degrades
+  // honestly either way -- sampler_task writes NaN, never a fabricated 0,
+  // into ax/ay/az/gx/gy/gz (see the comment there).
   if (!has_ppg) {
     Serial.println("REFUSING to record: PPG is required.");
     if (has_oled) {
