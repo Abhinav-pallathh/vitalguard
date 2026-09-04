@@ -93,18 +93,24 @@ class ArousalModel:
 
         model_path, card_path = Path(model_path), Path(card_path)
         card_raw = json.loads(card_path.read_text())
-        blob = joblib.load(model_path)
-
-        features = tuple(blob["features"])
-        if features != FEATURE_NAMES:
-            raise ValueError(f"model feature order {features} != code {FEATURE_NAMES}")
         if tuple(card_raw["features"]) != FEATURE_NAMES:
             raise ValueError("model card feature order does not match the code")
+
+        # joblib.load is pickle underneath -- it can execute arbitrary code
+        # for a file that isn't actually a fitted model. The hash MUST be
+        # checked before that call, not after: checking it after already ran
+        # whatever the file contained, which makes the check theatre rather
+        # than a guard.
         if verify:
             digest = hashlib.sha256(model_path.read_bytes()).hexdigest()
             if digest != card_raw["sha256"]:
                 raise ValueError(f"{model_path} does not match its card "
                                  f"({digest[:12]} vs {card_raw['sha256'][:12]})")
+        blob = joblib.load(model_path)
+
+        features = tuple(blob["features"])
+        if features != FEATURE_NAMES:
+            raise ValueError(f"model feature order {features} != code {FEATURE_NAMES}")
 
         loso = card_raw["loso"]
         card = ModelCard(
